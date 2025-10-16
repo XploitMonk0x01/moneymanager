@@ -313,6 +313,56 @@ class FirestoreService {
     });
   }
 
+  // UPI App CRUD operations
+  Future<void> addUpiApp(app.UpiApp upiApp) async {
+    try {
+      await _db.collection('upi_apps').doc(upiApp.id).set({
+        'name': upiApp.name,
+        'iconAsset': upiApp.iconAsset,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to add UPI app: $e');
+    }
+  }
+
+  Stream<List<app.UpiApp>> getUpiApps() {
+    return _db
+        .collection('upi_apps')
+        .orderBy('name')
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return app.UpiApp(
+          id: doc.id,
+          name: data['name'] ?? '',
+          iconAsset: data['iconAsset'] ?? '',
+        );
+      }).toList();
+    });
+  }
+
+  Future<void> updateUpiApp(app.UpiApp upiApp) async {
+    try {
+      await _db.collection('upi_apps').doc(upiApp.id).update({
+        'name': upiApp.name,
+        'iconAsset': upiApp.iconAsset,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to update UPI app: $e');
+    }
+  }
+
+  Future<void> deleteUpiApp(String id) async {
+    try {
+      await _db.collection('upi_apps').doc(id).delete();
+    } catch (e) {
+      throw Exception('Failed to delete UPI app: $e');
+    }
+  }
+
   Future<void> initializeDefaultData() async {
     try {
       // Check if categories already exist
@@ -339,6 +389,13 @@ class FirestoreService {
           app.Category(id: 'salary', name: 'Salary', icon: Icons.work),
           app.Category(
               id: 'investment', name: 'Investment', icon: Icons.trending_up),
+          app.Category(
+              id: 'maintenance',
+              name: 'Maintenance',
+              icon: Icons.home_repair_service),
+          app.Category(id: 'home', name: 'Home', icon: Icons.home),
+          app.Category(
+              id: 'other_expense', name: 'Other', icon: Icons.more_horiz),
         ];
 
         for (final category in defaultCategories) {
@@ -374,8 +431,165 @@ class FirestoreService {
           await addPaymentMethod(paymentMethod);
         }
       }
+
+      // Check if UPI apps already exist
+      final upiAppsSnapshot = await _db.collection('upi_apps').limit(1).get();
+
+      if (upiAppsSnapshot.docs.isEmpty) {
+        // Add default UPI apps
+        final defaultUpiApps = [
+          app.UpiApp(id: 'gpay', name: 'Google Pay', iconAsset: ''),
+          app.UpiApp(id: 'phonepe', name: 'PhonePe', iconAsset: ''),
+          app.UpiApp(id: 'paytm', name: 'Paytm', iconAsset: ''),
+          app.UpiApp(id: 'amazonpay', name: 'Amazon Pay', iconAsset: ''),
+          app.UpiApp(id: 'bhim', name: 'BHIM UPI', iconAsset: ''),
+        ];
+
+        for (final upiApp in defaultUpiApps) {
+          await addUpiApp(upiApp);
+        }
+      }
     } catch (e) {
       // Error initializing default data: $e
+    }
+  }
+
+  /// Deletes all user data from Firestore
+  /// This includes all transactions, records, categories, and payment methods
+  // Granular delete methods for enhanced delete functionality
+
+  /// Delete all transactions only
+  Future<void> deleteTransactions() async {
+    try {
+      final batch = _db.batch();
+      final snapshot = await _db.collection('transactions').get();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      throw Exception('Failed to delete transactions: $e');
+    }
+  }
+
+  /// Delete all borrow/lend records only
+  Future<void> deleteRecords() async {
+    try {
+      final batch = _db.batch();
+      final snapshot = await _db.collection('records').get();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      throw Exception('Failed to delete records: $e');
+    }
+  }
+
+  /// Delete custom categories only (keeps default categories)
+  Future<void> deleteCustomCategories() async {
+    try {
+      final batch = _db.batch();
+      final snapshot = await _db
+          .collection('categories')
+          .where('isCustom', isEqualTo: true)
+          .get();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      throw Exception('Failed to delete custom categories: $e');
+    }
+  }
+
+  /// Delete all custom payment methods
+  Future<void> deleteCustomPaymentMethods() async {
+    try {
+      final batch = _db.batch();
+      final snapshot = await _db.collection('payment_methods').get();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      throw Exception('Failed to delete custom payment methods: $e');
+    }
+  }
+
+  /// Delete all custom UPI apps and reinitialize defaults
+  Future<void> deleteCustomUpiApps() async {
+    try {
+      final batch = _db.batch();
+      final snapshot = await _db.collection('upi_apps').get();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      // Reinitialize default UPI apps
+      await initializeDefaultData();
+    } catch (e) {
+      throw Exception('Failed to delete custom UPI apps: $e');
+    }
+  }
+
+  /// Delete selected user data based on options
+  Future<void> deleteSelectedUserData({
+    required bool transactions,
+    required bool records,
+    required bool customCategories,
+    required bool customPaymentMethods,
+    required bool customUpiApps,
+  }) async {
+    try {
+      if (transactions) await deleteTransactions();
+      if (records) await deleteRecords();
+      if (customCategories) await deleteCustomCategories();
+      if (customPaymentMethods) await deleteCustomPaymentMethods();
+      if (customUpiApps) await deleteCustomUpiApps();
+    } catch (e) {
+      throw Exception('Failed to delete selected data: $e');
+    }
+  }
+
+  Future<void> deleteAllUserData() async {
+    try {
+      // Use batched writes for better performance and atomicity
+      final batch = _db.batch();
+
+      // Delete all transactions
+      final transactionsSnapshot = await _db.collection('transactions').get();
+      for (final doc in transactionsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Delete all records (borrow/lend)
+      final recordsSnapshot = await _db.collection('records').get();
+      for (final doc in recordsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Delete all custom categories (keep default ones or delete all)
+      final categoriesSnapshot = await _db.collection('categories').get();
+      for (final doc in categoriesSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Delete all custom payment methods
+      final paymentMethodsSnapshot =
+          await _db.collection('payment_methods').get();
+      for (final doc in paymentMethodsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+
+      // Commit all deletions
+      await batch.commit();
+
+      // Reinitialize default data
+      await initializeDefaultData();
+    } catch (e) {
+      throw Exception('Failed to delete all user data: $e');
     }
   }
 }

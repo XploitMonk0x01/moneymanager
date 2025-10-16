@@ -45,6 +45,7 @@ class CategoryData {
     'water': Icons.water_drop,
     'gas': Icons.local_fire_department,
     'maintenance': Icons.home_repair_service,
+    'home': Icons.home,
     'other_expense': Icons.more_horiz,
   };
 
@@ -87,10 +88,11 @@ class CategoryData {
     'recharge': Colors.blue.shade400,
     'social': Colors.purple.shade400,
     'internet': Colors.indigo.shade400,
-    'electricity': Colors.yellow.shade600,
+    'electricity': Colors.yellow.shade700,
     'water': Colors.blue.shade300,
-    'gas': Colors.orange.shade400,
-    'maintenance': Colors.brown.shade500,
+    'gas': Colors.orange.shade500,
+    'maintenance': Colors.grey.shade700,
+    'home': Colors.brown.shade600,
     'other_expense': Colors.grey,
   };
 
@@ -149,7 +151,8 @@ class CategoryData {
       'name': 'Maintenance',
       'icon': Icons.home_repair_service
     },
-    {'id': 'other_expense', 'name': 'Other Expenses', 'icon': Icons.more_horiz},
+    {'id': 'home', 'name': 'Home', 'icon': Icons.home},
+    {'id': 'other_expense', 'name': 'Other', 'icon': Icons.more_horiz},
   ];
 
   static IconData getIcon(String categoryId) {

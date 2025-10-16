@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../providers/providers.dart';
 import '../models/models.dart';
 import 'package:intl/intl.dart';
+import 'record_view_screen.dart';
 
 class RecordScreen extends ConsumerStatefulWidget {
   const RecordScreen({super.key});
@@ -119,7 +120,9 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                                           .onSurfaceVariant,
                                     ),
                                     onSelected: (value) {
-                                      if (value == 'share') {
+                                      if (value == 'view') {
+                                        _viewRecord(record);
+                                      } else if (value == 'share') {
                                         _shareRecord(record);
                                       } else if (value == 'edit') {
                                         _editRecord(record);
@@ -128,6 +131,16 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                                       }
                                     },
                                     itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'view',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.visibility),
+                                            SizedBox(width: 8),
+                                            Text('View'),
+                                          ],
+                                        ),
+                                      ),
                                       const PopupMenuItem(
                                         value: 'share',
                                         child: Row(
@@ -191,6 +204,8 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                     builder: (context) => _AddRecordSheet(ref: ref),
                   );
                 },
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
                 icon: const Icon(Icons.add),
                 label: const Text('Add Record'),
               )
@@ -206,8 +221,19 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                     builder: (context) => _AddRecordSheet(ref: ref),
                   );
                 },
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Colors.white,
                 child: const Icon(Icons.add),
               ),
+      ),
+    );
+  }
+
+  void _viewRecord(Record record) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RecordViewScreen(record: record),
       ),
     );
   }
@@ -235,44 +261,53 @@ ${record.isBorrowed ? '📥' : '📤'} $recordType ${record.person}
     );
   }
 
-  void _editRecord(Record record) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      builder: (context) => _EditRecordSheet(ref: ref, record: record),
-    );
+  Future<void> _editRecord(Record record) async {
+    // Show edit sheet directly without authentication
+    if (mounted) {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        builder: (context) => _EditRecordSheet(ref: ref, record: record),
+      );
+    }
   }
 
-  void _deleteRecord(Record record) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Record'),
-        content: Text(
-            'Are you sure you want to delete this record with ${record.person}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              ref
-                  .read(recordListNotifierProvider.notifier)
-                  .deleteRecord(record.id);
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Record deleted successfully')),
-              );
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _deleteRecord(Record record) async {
+    // Show confirmation dialog directly without authentication
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Record'),
+          content: Text(
+              'Are you sure you want to delete this record with ${record.person}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                ref
+                    .read(recordListNotifierProvider.notifier)
+                    .deleteRecord(record.id);
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Record deleted successfully')),
+                );
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildDrawer(BuildContext context) {
@@ -452,13 +487,53 @@ ${record.isBorrowed ? '📥' : '📤'} $recordType ${record.person}
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // TODO: Implement delete all data functionality
+              onPressed: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('All data deleted successfully')),
+
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 );
+
+                try {
+                  // Delete all user data from Firestore
+                  final firestoreService = ref.read(firestoreServiceProvider);
+                  await firestoreService.deleteAllUserData();
+
+                  // Clear local database cache
+                  final localDbService = ref.read(localDatabaseServiceProvider);
+                  await localDbService.clearAllCachedData();
+
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show success message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('All data deleted successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show error message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to delete data: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete All'),
@@ -483,12 +558,57 @@ ${record.isBorrowed ? '📥' : '📤'} $recordType ${record.person}
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // TODO: Implement reset settings functionality
+              onPressed: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Settings reset to default')),
+
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 );
+
+                try {
+                  // Reset settings using SettingsService
+                  final settingsService = ref.read(settingsServiceProvider);
+                  await settingsService.resetSettings();
+
+                  // Reset theme to system default
+                  ref
+                      .read(themeModeProvider.notifier)
+                      .setTheme(ThemeMode.system);
+
+                  // Reset offline mode to false
+                  ref.read(isOfflineModeProvider.notifier).state = false;
+
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show success message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Settings reset to default'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show error message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to reset settings: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text('Reset'),
             ),

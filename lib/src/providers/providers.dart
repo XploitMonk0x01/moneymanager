@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../services/firestore_service.dart';
+import '../services/biometric_auth_service.dart';
+import '../services/local_database_service.dart';
+import '../services/settings_service.dart';
 
 // Theme provider
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
@@ -21,6 +24,24 @@ final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>(
 final firestoreServiceProvider = Provider<FirestoreService>((ref) {
   return FirestoreService();
 });
+
+// Biometric authentication service provider
+final biometricAuthServiceProvider = Provider<BiometricAuthService>((ref) {
+  return BiometricAuthService();
+});
+
+// Local database service provider
+final localDatabaseServiceProvider = Provider<LocalDatabaseService>((ref) {
+  return LocalDatabaseService();
+});
+
+// Settings service provider
+final settingsServiceProvider = Provider<SettingsService>((ref) {
+  return SettingsService();
+});
+
+// Connectivity/offline mode provider
+final isOfflineModeProvider = StateProvider<bool>((ref) => false);
 
 final transactionStreamProvider =
     StreamProvider.autoDispose<List<Transaction>>((ref) {
@@ -108,6 +129,7 @@ class CategoryListNotifier extends StateNotifier<List<Category>> {
       Category(id: 'shopping', name: 'Shopping', icon: Icons.shopping_bag),
       Category(id: 'salary', name: 'Salary', icon: Icons.work),
       Category(id: 'investment', name: 'Investment', icon: Icons.trending_up),
+      Category(id: 'home', name: 'Home', icon: Icons.home),
     ];
   }
 
@@ -244,12 +266,80 @@ class PaymentMethodListNotifier extends StateNotifier<List<PaymentMethod>> {
   }
 }
 
-final upiAppListProvider = StateProvider<List<UpiApp>>((ref) => [
+// UPI App providers
+final upiAppListProvider =
+    StateNotifierProvider<UpiAppListNotifier, List<UpiApp>>(
+  (ref) => UpiAppListNotifier(ref.read(firestoreServiceProvider)),
+);
+
+class UpiAppListNotifier extends StateNotifier<List<UpiApp>> {
+  UpiAppListNotifier(this._firestoreService) : super(_getDefaultUpiApps()) {
+    _loadUpiApps();
+  }
+
+  final FirestoreService _firestoreService;
+  StreamSubscription<List<UpiApp>>? _subscription;
+
+  static List<UpiApp> _getDefaultUpiApps() {
+    return [
       UpiApp(id: 'gpay', name: 'Google Pay', iconAsset: ''),
       UpiApp(id: 'phonepe', name: 'PhonePe', iconAsset: ''),
-      UpiApp(id: 'amazonpay', name: 'Amazon Pay', iconAsset: ''),
       UpiApp(id: 'paytm', name: 'Paytm', iconAsset: ''),
-    ]);
+      UpiApp(id: 'amazonpay', name: 'Amazon Pay', iconAsset: ''),
+      UpiApp(id: 'slice', name: 'Slice', iconAsset: ''),
+      UpiApp(id: 'bhim', name: 'BHIM UPI', iconAsset: ''),
+    ];
+  }
+
+  void _loadUpiApps() {
+    _subscription = _firestoreService.getUpiApps().listen(
+      (upiApps) {
+        if (upiApps.isNotEmpty) {
+          state = upiApps;
+        }
+        // If empty, keep the default UPI apps
+      },
+      onError: (error) {
+        // Error loading UPI apps: $error
+        // Keep default UPI apps on error
+      },
+    );
+  }
+
+  Future<void> addUpiApp(UpiApp upiApp) async {
+    try {
+      await _firestoreService.addUpiApp(upiApp);
+    } catch (e) {
+      // Error adding UPI app: $e
+      rethrow;
+    }
+  }
+
+  Future<void> updateUpiApp(UpiApp upiApp) async {
+    try {
+      await _firestoreService.updateUpiApp(upiApp);
+    } catch (e) {
+      // Error updating UPI app: $e
+      rethrow;
+    }
+  }
+
+  Future<void> removeUpiApp(String id) async {
+    try {
+      await _firestoreService.deleteUpiApp(id);
+    } catch (e) {
+      // Error removing UPI app: $e
+      rethrow;
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+}
+
 final recordListProvider = StreamProvider<List<Record>>((ref) {
   final firestoreService = ref.read(firestoreServiceProvider);
   return firestoreService.getRecords();

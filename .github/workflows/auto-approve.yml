@@ -1,0 +1,36 @@
+name: Auto Approve
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+
+jobs:
+  auto-approve:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' || contains(github.event.pull_request.title, '[AUTO]') || contains(github.event.pull_request.labels.*.name, 'auto-approve')
+    
+    steps:
+    - name: Auto approve
+      uses: hmarr/auto-approve-action@v4
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        
+  auto-merge:
+    needs: auto-approve
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' || contains(github.event.pull_request.title, '[AUTO-MERGE]')
+    
+    steps:
+    - name: Wait for status checks
+      uses: lewagon/wait-on-check-action@v1.3.4
+      with:
+        ref: ${{ github.event.pull_request.head.sha }}
+        check-name: 'test'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        wait-interval: 10
+        
+    - name: Auto merge
+      uses: pascalgn/merge-action@v0.15.6
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        merge_method: squash

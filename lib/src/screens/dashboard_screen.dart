@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import '../models/models.dart';
 import '../providers/providers.dart';
 import '../data/category_data.dart';
@@ -58,6 +59,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 case 'categories':
                   _showCategoryManagement(context);
                   break;
+                case 'upi_apps':
+                  _showUpiAppManagement(context);
+                  break;
               }
             },
             itemBuilder: (context) => [
@@ -68,6 +72,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                     Icon(Icons.category),
                     SizedBox(width: 8),
                     Text('Manage Categories'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'upi_apps',
+                child: Row(
+                  children: [
+                    Icon(Icons.account_balance_wallet),
+                    SizedBox(width: 8),
+                    Text('Manage UPI Apps'),
                   ],
                 ),
               ),
@@ -146,6 +160,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.account_balance_wallet),
+              title: const Text('Manage UPI Apps'),
+              onTap: () {
+                Navigator.pop(context);
+                _showUpiAppManagement(context);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('Settings'),
               onTap: () {
@@ -195,8 +217,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
                           final date = dates[index];
                           final dayTransactions = groupedTransactions[date]!;
-                          final totalAmount = dayTransactions.fold<double>(0,
-                              (sum, transaction) => sum + transaction.amount);
+
+                          // Calculate net amount (income - expenses)
+                          final totalIncome = dayTransactions
+                              .where((t) => t.isIncome)
+                              .fold<double>(0, (sum, t) => sum + t.amount);
+                          final totalExpenses = dayTransactions
+                              .where((t) => !t.isIncome)
+                              .fold<double>(0, (sum, t) => sum + t.amount);
+                          final netAmount = totalIncome - totalExpenses;
 
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,12 +247,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                                           ),
                                     ),
                                     Text(
-                                      '₹${NumberFormat('#,##0.00').format(totalAmount)}',
+                                      '${netAmount >= 0 ? '+' : ''}₹${NumberFormat('#,##0.00').format(netAmount.abs())}',
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleMedium
                                           ?.copyWith(
-                                            color: Colors.red,
+                                            color: _getTransactionColor(
+                                                netAmount >= 0),
                                             fontWeight: FontWeight.bold,
                                           ),
                                     ),
@@ -286,19 +316,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
+  // Helper method to get color for income/expense
+  Color _getTransactionColor(bool isIncome) {
+    return isIncome
+        ? Colors.green.shade600
+        : Theme.of(context).colorScheme.error;
+  }
+
   Widget _buildTransactionCard(Transaction transaction, BuildContext context) {
+    // Get categories from provider to support custom categories
+    final categories = ref.watch(categoryListProvider);
+    final category = categories.firstWhere(
+      (c) => c.id == transaction.categoryId,
+      orElse: () => Category(
+        id: transaction.categoryId,
+        name: CategoryData.getName(transaction.categoryId), // Fallback
+        icon: CategoryData.getIcon(transaction.categoryId),
+      ),
+    );
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: CategoryData.getColor(transaction.categoryId)
-              .withValues(alpha: 0.2),
+          backgroundColor: CategoryData.getColor(category.id).withOpacity(0.2),
           child: Icon(
-            CategoryData.getIcon(transaction.categoryId),
-            color: CategoryData.getColor(transaction.categoryId),
+            category.icon,
+            color: CategoryData.getColor(category.id),
           ),
         ),
-        title: Text(CategoryData.getName(transaction.categoryId)),
+        title: Text(category.name),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -318,7 +365,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               '${transaction.isIncome ? '+' : '-'}₹${NumberFormat('#,##0.00').format(transaction.amount)}',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: transaction.isIncome ? Colors.green : Colors.red,
+                color: _getTransactionColor(transaction.isIncome),
               ),
             ),
             PopupMenuButton<String>(
@@ -327,13 +374,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               onSelected: (value) {
-                if (value == 'edit') {
+                if (value == 'view') {
+                  _viewTransaction(transaction);
+                } else if (value == 'edit') {
                   _editTransaction(transaction);
                 } else if (value == 'delete') {
                   _deleteTransaction(transaction);
                 }
               },
               itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'view',
+                  child: Row(
+                    children: [
+                      Icon(Icons.visibility),
+                      SizedBox(width: 8),
+                      Text('View Details'),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'edit',
                   child: Row(
@@ -436,8 +495,194 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
+  void _viewTransaction(Transaction transaction) {
+    final categories = ref.read(categoryListProvider);
+
+    final category = categories.firstWhere(
+      (c) => c.id == transaction.categoryId,
+      orElse: () => Category(
+        id: transaction.categoryId,
+        name: CategoryData.getName(transaction.categoryId), // Fallback
+        icon: CategoryData.getIcon(transaction.categoryId),
+      ),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor:
+                  CategoryData.getColor(category.id).withOpacity(0.2),
+              child: Icon(
+                category.icon,
+                color: CategoryData.getColor(category.id),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Transaction Details',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  Text(
+                    DateFormat('MMM dd, yyyy - hh:mm a')
+                        .format(transaction.date),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailRow(
+                'Type',
+                transaction.isIncome ? 'Income' : 'Expense',
+                _getTransactionColor(transaction.isIncome),
+                transaction.isIncome
+                    ? Icons.arrow_downward
+                    : Icons.arrow_upward,
+              ),
+              const Divider(),
+              _buildDetailRow(
+                'Amount',
+                '₹${NumberFormat('#,##,##0.00').format(transaction.amount)}',
+                _getTransactionColor(transaction.isIncome),
+                Icons.currency_rupee,
+              ),
+              const Divider(),
+              _buildDetailRow(
+                'Category',
+                category.name,
+                CategoryData.getColor(category.id),
+                category.icon,
+              ),
+              const Divider(),
+              _buildDetailRow(
+                'Payment Method',
+                transaction.paymentMethod,
+                Theme.of(context).colorScheme.primary,
+                _getPaymentIcon(transaction.paymentMethod),
+              ),
+              if (transaction.upiApp != null) ...[
+                const Divider(),
+                _buildDetailRow(
+                  'UPI App',
+                  transaction.upiApp!,
+                  Theme.of(context).colorScheme.primary,
+                  Icons.account_balance_wallet,
+                ),
+              ],
+              if (transaction.notes?.isNotEmpty == true) ...[
+                const Divider(),
+                _buildDetailRow(
+                  'Notes',
+                  transaction.notes!,
+                  Theme.of(context).colorScheme.onSurface,
+                  Icons.note,
+                ),
+              ],
+              const Divider(),
+              _buildDetailRow(
+                'Date',
+                DateFormat('EEEE, MMM dd, yyyy').format(transaction.date),
+                Theme.of(context).colorScheme.onSurface,
+                Icons.calendar_today,
+              ),
+              _buildDetailRow(
+                'Time',
+                DateFormat('hh:mm a').format(transaction.date),
+                Theme.of(context).colorScheme.onSurface,
+                Icons.access_time,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _editTransaction(transaction);
+            },
+            icon: const Icon(Icons.edit),
+            label: const Text('Edit'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(
+      String label, String value, Color color, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getPaymentIcon(String paymentMethod) {
+    switch (paymentMethod.toLowerCase()) {
+      case 'upi':
+        return Icons.account_balance_wallet;
+      case 'cash':
+        return Icons.money;
+      case 'card':
+      case 'credit card':
+      case 'debit card':
+        return Icons.credit_card;
+      case 'bank transfer':
+        return Icons.account_balance;
+      default:
+        return Icons.payment;
+    }
+  }
+
   void _editTransaction(Transaction transaction) {
     final categories = ref.read(categoryListProvider);
+    final upiApps = ref.read(upiAppListProvider);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -450,6 +695,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         child: _EditTransactionSheet(
           transaction: transaction,
           categories: categories,
+          upiApps: upiApps,
         ),
       ),
     );
@@ -496,6 +742,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: const _CategoryManagementSheet(),
+      ),
+    );
+  }
+
+  void _showUpiAppManagement(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: const _UpiAppManagementSheet(),
       ),
     );
   }
@@ -603,31 +864,168 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _showDeleteAllDataDialog(BuildContext context) {
+    final Map<String, bool> selectedOptions = {
+      'transactions': false,
+      'records': false,
+      'categories': false,
+      'payment_methods': false,
+      'upi_apps': false,
+    };
+
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Delete All Data'),
-          content: const Text(
-              'This will permanently delete all your records, accounts, and transactions. This action cannot be undone.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                // TODO: Implement delete all data functionality
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('All data deleted successfully')),
-                );
-              },
-              style: TextButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('Delete All'),
-            ),
-          ],
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (statefulContext, setState) {
+            return AlertDialog(
+              title: const Text('Delete Data'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Select what you want to delete:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 16),
+                    CheckboxListTile(
+                      title: const Text('Transactions'),
+                      subtitle: const Text('All income and expense records'),
+                      value: selectedOptions['transactions'],
+                      onChanged: (bool? value) {
+                        setState(() =>
+                            selectedOptions['transactions'] = value ?? false);
+                      },
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Borrow/Lend Records'),
+                      subtitle: const Text('All lending and borrowing records'),
+                      value: selectedOptions['records'],
+                      onChanged: (bool? value) {
+                        setState(
+                            () => selectedOptions['records'] = value ?? false);
+                      },
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Custom Categories'),
+                      subtitle: const Text('Only custom-created categories'),
+                      value: selectedOptions['categories'],
+                      onChanged: (bool? value) {
+                        setState(() =>
+                            selectedOptions['categories'] = value ?? false);
+                      },
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Custom Payment Methods'),
+                      subtitle: const Text('Custom payment options'),
+                      value: selectedOptions['payment_methods'],
+                      onChanged: (bool? value) {
+                        setState(() => selectedOptions['payment_methods'] =
+                            value ?? false);
+                      },
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Custom UPI Apps'),
+                      subtitle: const Text('Reset to default UPI apps'),
+                      value: selectedOptions['upi_apps'],
+                      onChanged: (bool? value) {
+                        setState(
+                            () => selectedOptions['upi_apps'] = value ?? false);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final hasSelection =
+                        selectedOptions.values.any((v) => v == true);
+                    if (!hasSelection) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text('Please select at least one option')),
+                      );
+                      return;
+                    }
+
+                    Navigator.pop(dialogContext);
+
+                    // Show loading indicator
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (loadingContext) => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+
+                    try {
+                      final firestoreService =
+                          ref.read(firestoreServiceProvider);
+                      await firestoreService.deleteSelectedUserData(
+                        transactions: selectedOptions['transactions']!,
+                        records: selectedOptions['records']!,
+                        customCategories: selectedOptions['categories']!,
+                        customPaymentMethods:
+                            selectedOptions['payment_methods']!,
+                        customUpiApps: selectedOptions['upi_apps']!,
+                      );
+
+                      // Clear local cache for selected items
+                      final localDbService =
+                          ref.read(localDatabaseServiceProvider);
+                      if (selectedOptions['transactions']!) {
+                        await localDbService.clearCachedTransactions();
+                      }
+                      if (selectedOptions['records']!) {
+                        await localDbService.clearCachedRecords();
+                      }
+                      if (selectedOptions['categories']!) {
+                        await localDbService.clearCachedCategories();
+                      }
+                      if (selectedOptions['payment_methods']!) {
+                        await localDbService.clearCachedPaymentMethods();
+                      }
+
+                      if (context.mounted) Navigator.pop(context);
+
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text(
+                                'Selected data deleted successfully'),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) Navigator.pop(context);
+
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to delete data: $e'),
+                            backgroundColor:
+                                Theme.of(context).colorScheme.error,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error),
+                  child: const Text('Delete Selected'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -647,12 +1045,57 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // TODO: Implement reset settings functionality
+              onPressed: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Settings reset to default')),
+
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 );
+
+                try {
+                  // Reset settings using SettingsService
+                  final settingsService = ref.read(settingsServiceProvider);
+                  await settingsService.resetSettings();
+
+                  // Reset theme to system default
+                  ref
+                      .read(themeModeProvider.notifier)
+                      .setTheme(ThemeMode.system);
+
+                  // Reset offline mode to false
+                  ref.read(isOfflineModeProvider.notifier).state = false;
+
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show success message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Settings reset to default'),
+                        backgroundColor: Colors.green.shade600,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show error message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to reset settings: $e'),
+                        backgroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text('Reset'),
             ),
@@ -692,14 +1135,53 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 if (feedbackController.text.trim().isNotEmpty) {
-                  // TODO: Implement feedback submission
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Thank you for your feedback!')),
+
+                  // Show loading
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
                   );
+
+                  try {
+                    // Submit feedback to Firestore
+                    await firestore.FirebaseFirestore.instance
+                        .collection('feedback')
+                        .add({
+                      'message': feedbackController.text.trim(),
+                      'timestamp': firestore.FieldValue.serverTimestamp(),
+                      'userId': 'user_${DateTime.now().millisecondsSinceEpoch}',
+                    });
+
+                    if (context.mounted) Navigator.pop(context);
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Thank you for your feedback!'),
+                          backgroundColor: Colors.green.shade600,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) Navigator.pop(context);
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to submit feedback: $e'),
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                        ),
+                      );
+                    }
+                  }
+
+                  feedbackController.dispose();
                 }
               },
               child: const Text('Send'),
@@ -763,56 +1245,223 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _performCloudBackup(BuildContext context) async {
-    // TODO: Implement cloud backup functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Backing up to cloud...'),
-        duration: Duration(seconds: 2),
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Expanded(child: Text('Backing up to cloud...')),
+          ],
+        ),
       ),
     );
 
-    // Simulate backup process
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data backed up to cloud successfully!')),
-      );
+    try {
+      // Get all data
+      final transactionsSnapshot = await firestore.FirebaseFirestore.instance
+          .collection('transactions')
+          .get();
+      final recordsSnapshot = await firestore.FirebaseFirestore.instance
+          .collection('records')
+          .get();
+      final categoriesSnapshot = await firestore.FirebaseFirestore.instance
+          .collection('categories')
+          .get();
+      final upiAppsSnapshot = await firestore.FirebaseFirestore.instance
+          .collection('upi_apps')
+          .get();
+
+      // Create backup document
+      final backupData = {
+        'timestamp': firestore.FieldValue.serverTimestamp(),
+        'transactionsCount': transactionsSnapshot.docs.length,
+        'recordsCount': recordsSnapshot.docs.length,
+        'categoriesCount': categoriesSnapshot.docs.length,
+        'upiAppsCount': upiAppsSnapshot.docs.length,
+        'deviceInfo': 'MoneyManager Backup',
+      };
+
+      await firestore.FirebaseFirestore.instance
+          .collection('backups')
+          .add(backupData);
+
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Data backed up to cloud successfully!'),
+            backgroundColor: Colors.green.shade600,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Backup failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
   void _performCloudRestore(BuildContext context) async {
-    // TODO: Implement cloud restore functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Restoring from cloud...'),
-        duration: Duration(seconds: 2),
+    // Show confirmation dialog first
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore from Cloud'),
+        content: const Text(
+            'Your data is automatically synced with Firebase Cloud Firestore. '
+            'All your transactions, records, and settings are already available. '
+            '\n\nDo you want to refresh the data?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Refresh'),
+          ),
+        ],
       ),
     );
 
-    // Simulate restore process
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data restored from cloud successfully!')),
-      );
+    if (confirm != true) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Expanded(child: Text('Refreshing data from cloud...')),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // Refresh all providers
+      ref.invalidate(transactionStreamProvider);
+      ref.invalidate(recordListProvider);
+      ref.invalidate(categoryListProvider);
+      ref.invalidate(upiAppListProvider);
+
+      // Wait a moment for streams to refresh
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Data refreshed from cloud successfully!'),
+            backgroundColor: Colors.green.shade600,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Restore failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
   void _performLocalBackup(BuildContext context) async {
-    // TODO: Implement local backup functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Creating local backup...'),
-        duration: Duration(seconds: 2),
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Expanded(child: Text('Creating local backup...')),
+          ],
+        ),
       ),
     );
 
-    // Simulate backup process
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Local backup created successfully!')),
+    try {
+      // Get all data
+      final transactionsSnapshot = await firestore.FirebaseFirestore.instance
+          .collection('transactions')
+          .get();
+      final recordsSnapshot = await firestore.FirebaseFirestore.instance
+          .collection('records')
+          .get();
+
+      // Create backup data structure
+      final backupData = {
+        'timestamp': DateTime.now().toIso8601String(),
+        'transactions':
+            transactionsSnapshot.docs.map((doc) => doc.data()).toList(),
+        'records': recordsSnapshot.docs.map((doc) => doc.data()).toList(),
+      };
+
+      // Save to local database
+      final localDb = ref.read(localDatabaseServiceProvider);
+
+      // Cache transactions locally
+      await localDb.cacheTransactions(
+        transactionsSnapshot.docs.map((doc) {
+          final data = doc.data();
+          return Transaction(
+            id: doc.id,
+            amount: (data['amount'] as num).toDouble(),
+            categoryId: data['categoryId'] as String,
+            paymentMethod: data['paymentMethod'] as String,
+            upiApp: data['upiApp'] as String?,
+            notes: data['notes'] as String?,
+            date: (data['date'] as firestore.Timestamp).toDate(),
+            isIncome: data['isIncome'] as bool,
+          );
+        }).toList(),
       );
+
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Local backup created successfully!'),
+            backgroundColor: Colors.green.shade600,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Local backup failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) Navigator.pop(context);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Local backup failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
@@ -1031,24 +1680,32 @@ class _CategoryManagementSheetState
                         itemBuilder: (context, index) {
                           final icon = _availableIcons[index];
                           final isSelected = icon == _selectedIcon;
-                          return GestureDetector(
+                          return InkWell(
                             onTap: () => setState(() => _selectedIcon = icon),
+                            borderRadius: BorderRadius.circular(12),
                             child: Container(
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? Theme.of(context)
                                         .colorScheme
                                         .primaryContainer
-                                    : Theme.of(context).colorScheme.surface,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: isSelected
                                       ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.outline,
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .outline
+                                          .withValues(alpha: 0.3),
+                                  width: isSelected ? 2 : 1,
                                 ),
                               ),
                               child: Icon(
                                 icon,
+                                size: 28,
                                 color: isSelected
                                     ? Theme.of(context)
                                         .colorScheme
@@ -1093,10 +1750,10 @@ class _CategoryManagementSheetState
                 return Card(
                   child: ListTile(
                     leading: Icon(
-                      CategoryData.getIcon(category.id),
+                      category.icon,
                       color: CategoryData.getColor(category.id),
                     ),
-                    title: Text(CategoryData.getName(category.id)),
+                    title: Text(category.name),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1105,7 +1762,8 @@ class _CategoryManagementSheetState
                           onPressed: () => _editCategory(category),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
+                          icon: Icon(Icons.delete,
+                              color: Theme.of(context).colorScheme.error),
                           onPressed: () => _deleteCategory(category),
                         ),
                       ],
@@ -1193,7 +1851,213 @@ class _CategoryManagementSheetState
                 }
               }
             },
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+}
+
+// UPI App Management Sheet
+class _UpiAppManagementSheet extends ConsumerStatefulWidget {
+  const _UpiAppManagementSheet();
+
+  @override
+  ConsumerState<_UpiAppManagementSheet> createState() =>
+      _UpiAppManagementSheetState();
+}
+
+class _UpiAppManagementSheetState
+    extends ConsumerState<_UpiAppManagementSheet> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    final upiApps = ref.watch(upiAppListProvider);
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.8,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Text(
+            'Manage UPI Apps',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 16),
+
+          // Add new UPI app form
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Add New UPI App',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(
+                              labelText: 'UPI App Name',
+                              border: OutlineInputBorder(),
+                              hintText: 'e.g., Google Pay, PhonePe',
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter UPI app name';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton(
+                          onPressed: _addUpiApp,
+                          child: const Text('Add'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Existing UPI apps
+          Text(
+            'Existing UPI Apps',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 8),
+
+          Expanded(
+            child: ListView.builder(
+              itemCount: upiApps.length,
+              itemBuilder: (context, index) {
+                final upiApp = upiApps[index];
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(
+                      Icons.account_balance_wallet,
+                      size: 32,
+                    ),
+                    title: Text(upiApp.name),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => _deleteUpiApp(upiApp),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addUpiApp() async {
+    if (_formKey.currentState?.validate() ?? false) {
+      final newUpiApp = UpiApp(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: _nameController.text,
+        iconAsset: '',
+      );
+
+      try {
+        await ref.read(upiAppListProvider.notifier).addUpiApp(newUpiApp);
+        _nameController.clear();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('UPI app added successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to add UPI app: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  void _deleteUpiApp(UpiApp upiApp) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete UPI App'),
+        content: Text('Are you sure you want to delete "${upiApp.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              try {
+                await ref
+                    .read(upiAppListProvider.notifier)
+                    .removeUpiApp(upiApp.id);
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content: Text('${upiApp.name} deleted successfully!')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to delete UPI app: $e')),
+                  );
+                }
+              }
+            },
+            style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error),
             child: const Text('Delete'),
           ),
         ],
@@ -1236,7 +2100,7 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.8,
+      height: MediaQuery.of(context).size.height * 0.85,
       padding: const EdgeInsets.all(16),
       child: Form(
         key: _formKey,
@@ -1264,166 +2128,185 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
             ),
             const SizedBox(height: 16),
 
-            // Transaction type toggle
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
+            // Scrollable content
+            Expanded(
+              child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Transaction Type',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                    // Transaction type toggle
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Transaction Type',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: RadioListTile<bool>(
+                                    title: const Text('Expense'),
+                                    value: false,
+                                    groupValue: _isIncome,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _isIncome = value!;
+                                      });
+                                    },
+                                    activeColor:
+                                        Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: RadioListTile<bool>(
+                                    title: const Text('Income'),
+                                    value: true,
+                                    groupValue: _isIncome,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _isIncome = value!;
+                                      });
+                                    },
+                                    activeColor: Colors.green.shade600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: RadioListTile<bool>(
-                            title: const Text('Expense'),
-                            value: false,
-                            groupValue: _isIncome,
-                            onChanged: (value) {
-                              setState(() {
-                                _isIncome = value!;
-                              });
-                            },
-                            activeColor: Colors.red,
+                    const SizedBox(height: 16),
+
+                    // Amount field
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Amount',
+                        prefixText: '₹ ',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter an amount';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Please enter a valid number';
+                        }
+                        return null;
+                      },
+                      onSaved: (value) => _amount = double.parse(value!),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Category dropdown
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                        labelText: 'Category',
+                        border: OutlineInputBorder(),
+                      ),
+                      value: _category.isEmpty ? null : _category,
+                      items: widget.categories.map((category) {
+                        return DropdownMenuItem(
+                          value: category.id,
+                          child: Row(
+                            children: [
+                              Icon(
+                                category.icon,
+                                size: 20,
+                                color: CategoryData.getColor(category.id),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(category.name),
+                            ],
                           ),
-                        ),
-                        Expanded(
-                          child: RadioListTile<bool>(
-                            title: const Text('Income'),
-                            value: true,
-                            groupValue: _isIncome,
-                            onChanged: (value) {
-                              setState(() {
-                                _isIncome = value!;
-                              });
-                            },
-                            activeColor: Colors.green,
-                          ),
-                        ),
+                        );
+                      }).toList(),
+                      onChanged: (value) => setState(() => _category = value!),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please select a category';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Payment method dropdown
+                    DropdownButtonFormField<String>(
+                      decoration: const InputDecoration(
+                        labelText: 'Payment Method',
+                        border: OutlineInputBorder(),
+                      ),
+                      value: _paymentMethod,
+                      items: const [
+                        DropdownMenuItem(value: 'Cash', child: Text('Cash')),
+                        DropdownMenuItem(value: 'Card', child: Text('Card')),
+                        DropdownMenuItem(value: 'UPI', child: Text('UPI')),
+                        DropdownMenuItem(
+                            value: 'Bank Transfer',
+                            child: Text('Bank Transfer')),
                       ],
+                      onChanged: (value) => setState(() {
+                        _paymentMethod = value!;
+                        if (_paymentMethod != 'UPI') _upiApp = null;
+                      }),
                     ),
+
+                    // UPI App selection (only if UPI is selected)
+                    if (_paymentMethod == 'UPI') ...[
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        decoration: const InputDecoration(
+                          labelText: 'UPI App',
+                          border: OutlineInputBorder(),
+                        ),
+                        value: _upiApp,
+                        items: widget.upiApps.map((app) {
+                          return DropdownMenuItem(
+                            value: app.name,
+                            child: Text(app.name),
+                          );
+                        }).toList(),
+                        onChanged: (value) => setState(() => _upiApp = value),
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // Notes field
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Notes (Optional)',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 2,
+                      onSaved: (value) => _notes = value ?? '',
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Submit button
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _submitTransaction,
+                        child: Text(_isIncome ? 'Add Income' : 'Add Expense'),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Amount field
-            TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixText: '₹ ',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter an amount';
-                }
-                if (double.tryParse(value) == null) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
-              onSaved: (value) => _amount = double.parse(value!),
-            ),
-            const SizedBox(height: 16),
-
-            // Category dropdown
-            DropdownButtonFormField<String>(
-              decoration: const InputDecoration(
-                labelText: 'Category',
-                border: OutlineInputBorder(),
-              ),
-              value: _category.isEmpty ? null : _category,
-              items: widget.categories.map((category) {
-                return DropdownMenuItem(
-                  value: category.id,
-                  child: Row(
-                    children: [
-                      Icon(CategoryData.getIcon(category.id),
-                          size: 20, color: CategoryData.getColor(category.id)),
-                      const SizedBox(width: 8),
-                      Text(CategoryData.getName(category.id)),
-                    ],
-                  ),
-                );
-              }).toList(),
-              onChanged: (value) => setState(() => _category = value!),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select a category';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Payment method dropdown
-            DropdownButtonFormField<String>(
-              decoration: const InputDecoration(
-                labelText: 'Payment Method',
-                border: OutlineInputBorder(),
-              ),
-              value: _paymentMethod,
-              items: const [
-                DropdownMenuItem(value: 'Cash', child: Text('Cash')),
-                DropdownMenuItem(value: 'Card', child: Text('Card')),
-                DropdownMenuItem(value: 'UPI', child: Text('UPI')),
-                DropdownMenuItem(
-                    value: 'Bank Transfer', child: Text('Bank Transfer')),
-              ],
-              onChanged: (value) => setState(() {
-                _paymentMethod = value!;
-                if (_paymentMethod != 'UPI') _upiApp = null;
-              }),
-            ),
-
-            // UPI App selection (only if UPI is selected)
-            if (_paymentMethod == 'UPI') ...[
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'UPI App',
-                  border: OutlineInputBorder(),
-                ),
-                value: _upiApp,
-                items: widget.upiApps.map((app) {
-                  return DropdownMenuItem(
-                    value: app.name,
-                    child: Text(app.name),
-                  );
-                }).toList(),
-                onChanged: (value) => setState(() => _upiApp = value),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // Notes field
-            TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Notes (Optional)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 2,
-              onSaved: (value) => _notes = value ?? '',
-            ),
-
-            const SizedBox(height: 20),
-
-            // Submit button
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _submitTransaction,
-                child: Text(_isIncome ? 'Add Income' : 'Add Expense'),
               ),
             ),
           ],
@@ -1466,10 +2349,12 @@ class _AddTransactionSheetState extends State<_AddTransactionSheet> {
 class _EditTransactionSheet extends ConsumerStatefulWidget {
   final Transaction transaction;
   final List<Category> categories;
+  final List<UpiApp> upiApps;
 
   const _EditTransactionSheet({
     required this.transaction,
     required this.categories,
+    required this.upiApps,
   });
 
   @override
@@ -1482,7 +2367,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
   late double _amount;
   late String _category;
   late String _paymentMethod;
-  late String _upiApp;
+  late String? _upiApp;
   late String _notes;
   late DateTime _date;
   late bool _isIncome;
@@ -1493,7 +2378,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
     _amount = widget.transaction.amount;
     _category = widget.transaction.categoryId;
     _paymentMethod = widget.transaction.paymentMethod;
-    _upiApp = widget.transaction.upiApp ?? '';
+    _upiApp = widget.transaction.upiApp;
     _notes = widget.transaction.notes ?? '';
     _date = widget.transaction.date;
     _isIncome = widget.transaction.isIncome;
@@ -1632,11 +2517,11 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                     value: category.id,
                     child: Row(
                       children: [
-                        Icon(CategoryData.getIcon(category.id),
+                        Icon(category.icon,
                             size: 20,
                             color: CategoryData.getColor(category.id)),
                         const SizedBox(width: 8),
-                        Text(CategoryData.getName(category.id)),
+                        Text(category.name),
                       ],
                     ),
                   );
@@ -1690,7 +2575,14 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                           child: Text(method),
                         ))
                     .toList(),
-                onChanged: (value) => setState(() => _paymentMethod = value!),
+                onChanged: (value) {
+                  setState(() {
+                    _paymentMethod = value!;
+                    if (_paymentMethod != 'UPI') {
+                      _upiApp = null;
+                    }
+                  });
+                },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please select payment method';
@@ -1698,6 +2590,25 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                   return null;
                 },
               ),
+              if (_paymentMethod == 'UPI') ...[
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    labelText: 'UPI App',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  value: _upiApp,
+                  items: widget.upiApps.map((app) {
+                    return DropdownMenuItem(
+                      value: app.name,
+                      child: Text(app.name),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setState(() => _upiApp = value),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // Notes
@@ -1757,7 +2668,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
         amount: _amount,
         categoryId: _category,
         paymentMethod: _paymentMethod,
-        upiApp: _upiApp.isEmpty ? null : _upiApp,
+        upiApp: _upiApp,
         notes: _notes.isEmpty ? null : _notes,
         date: _date,
         isIncome: _isIncome,

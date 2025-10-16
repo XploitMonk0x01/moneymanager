@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
-import 'dart:convert';
 import '../providers/providers.dart';
 import '../models/models.dart';
 import 'package:intl/intl.dart';
@@ -107,10 +106,10 @@ class SettingsScreen extends ConsumerWidget {
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () => _showAboutDialog(context),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.update),
-                    title: const Text('Version'),
-                    subtitle: const Text('1.0.0'),
+                  const ListTile(
+                    leading: Icon(Icons.update),
+                    title: Text('Version'),
+                    subtitle: Text('1.0.0'),
                   ),
                 ],
               ),

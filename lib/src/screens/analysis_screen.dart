@@ -569,6 +569,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
   Widget _buildCategoryBreakdown(List<Transaction> transactions) {
     if (transactions.isEmpty) return const SizedBox();
 
+    // Get categories from provider for custom category support
+    final categories = ref.watch(categoryListProvider);
+
     final categoryData = <String, double>{};
     for (final transaction in transactions) {
       categoryData[transaction.categoryId] =
@@ -605,6 +608,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             final percentage = (entry.value /
                 categoryData.values.fold(0.0, (sum, val) => sum + val) *
                 100);
+
+            // Find the category
+            final category = categories.firstWhere(
+              (c) => c.id == entry.key,
+              orElse: () => Category(
+                id: entry.key,
+                name: CategoryData.getName(entry.key),
+                icon: CategoryData.getIcon(entry.key),
+              ),
+            );
+
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
@@ -619,14 +633,14 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   ),
                   const SizedBox(width: 12),
                   Icon(
-                    CategoryData.getIcon(entry.key),
+                    category.icon,
                     size: 18,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      CategoryData.getName(entry.key),
+                      category.name,
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
@@ -875,13 +889,53 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // TODO: Implement delete all data functionality
+              onPressed: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('All data deleted successfully')),
+
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 );
+
+                try {
+                  // Delete all user data from Firestore
+                  final firestoreService = ref.read(firestoreServiceProvider);
+                  await firestoreService.deleteAllUserData();
+
+                  // Clear local database cache
+                  final localDbService = ref.read(localDatabaseServiceProvider);
+                  await localDbService.clearAllCachedData();
+
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show success message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('All data deleted successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show error message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to delete data: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               },
               style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete All'),
@@ -906,12 +960,57 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                // TODO: Implement reset settings functionality
+              onPressed: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Settings reset to default')),
+
+                // Show loading indicator
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (context) => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 );
+
+                try {
+                  // Reset settings using SettingsService
+                  final settingsService = ref.read(settingsServiceProvider);
+                  await settingsService.resetSettings();
+
+                  // Reset theme to system default
+                  ref
+                      .read(themeModeProvider.notifier)
+                      .setTheme(ThemeMode.system);
+
+                  // Reset offline mode to false
+                  ref.read(isOfflineModeProvider.notifier).state = false;
+
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show success message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Settings reset to default'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  // Close loading dialog
+                  if (context.mounted) Navigator.pop(context);
+
+                  // Show error message
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to reset settings: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text('Reset'),
             ),
