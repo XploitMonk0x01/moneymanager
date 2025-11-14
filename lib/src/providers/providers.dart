@@ -387,3 +387,70 @@ final recordListNotifierProvider =
     StateNotifierProvider<RecordListNotifier, List<Record>>(
   (ref) => RecordListNotifier(ref.read(firestoreServiceProvider)),
 );
+
+// AutoPay providers
+final autoPayStreamProvider = StreamProvider<List<AutoPay>>((ref) {
+  final firestoreService = ref.read(firestoreServiceProvider);
+  return firestoreService.getAutoPays();
+});
+
+final autoPayListProvider =
+    StateNotifierProvider<AutoPayListNotifier, List<AutoPay>>(
+  (ref) => AutoPayListNotifier(ref.read(firestoreServiceProvider)),
+);
+
+class AutoPayListNotifier extends StateNotifier<List<AutoPay>> {
+  AutoPayListNotifier(this._firestoreService) : super([]) {
+    _loadAutoPays();
+  }
+
+  final FirestoreService _firestoreService;
+  StreamSubscription<List<AutoPay>>? _subscription;
+
+  void _loadAutoPays() {
+    _subscription = _firestoreService.getAutoPays().listen(
+      (autoPays) {
+        state = autoPays;
+      },
+      onError: (error) {
+        // Error loading autopays: $error
+      },
+    );
+  }
+
+  Future<void> addAutoPay(AutoPay autoPay) async {
+    try {
+      await _firestoreService.addAutoPay(autoPay);
+      // State will be updated automatically via the stream
+    } catch (e) {
+      // Error adding autopay: $e
+      rethrow;
+    }
+  }
+
+  Future<void> updateAutoPay(AutoPay autoPay) async {
+    try {
+      await _firestoreService.updateAutoPay(autoPay);
+      // State will be updated automatically via the stream
+    } catch (e) {
+      // Error updating autopay: $e
+      rethrow;
+    }
+  }
+
+  Future<void> removeAutoPay(String id) async {
+    try {
+      await _firestoreService.deleteAutoPay(id);
+      // State will be updated automatically via the stream
+    } catch (e) {
+      // Error removing autopay: $e
+      rethrow;
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+}

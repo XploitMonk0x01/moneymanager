@@ -363,6 +363,75 @@ class FirestoreService {
     }
   }
 
+  // AutoPay CRUD operations
+  Future<void> addAutoPay(app.AutoPay autoPay) async {
+    try {
+      await _db.collection('autopays').doc(autoPay.id).set({
+        'title': autoPay.title,
+        'amount': autoPay.amount,
+        'categoryId': autoPay.categoryId,
+        'upiApp': autoPay.upiApp,
+        'startDate': autoPay.startDate.toIso8601String(),
+        'validUntil': autoPay.validUntil.toIso8601String(),
+        'notes': autoPay.notes,
+        'isActive': autoPay.isActive,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to add autopay: $e');
+    }
+  }
+
+  Stream<List<app.AutoPay>> getAutoPays() {
+    return _db
+        .collection('autopays')
+        .orderBy('validUntil', descending: false)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return app.AutoPay(
+          id: doc.id,
+          title: data['title'] ?? '',
+          amount: (data['amount'] as num).toDouble(),
+          categoryId: data['categoryId'] ?? '',
+          upiApp: data['upiApp'] ?? '',
+          startDate: DateTime.parse(data['startDate']),
+          validUntil: DateTime.parse(data['validUntil']),
+          notes: data['notes'],
+          isActive: data['isActive'] ?? true,
+        );
+      }).toList();
+    });
+  }
+
+  Future<void> updateAutoPay(app.AutoPay autoPay) async {
+    try {
+      await _db.collection('autopays').doc(autoPay.id).update({
+        'title': autoPay.title,
+        'amount': autoPay.amount,
+        'categoryId': autoPay.categoryId,
+        'upiApp': autoPay.upiApp,
+        'startDate': autoPay.startDate.toIso8601String(),
+        'validUntil': autoPay.validUntil.toIso8601String(),
+        'notes': autoPay.notes,
+        'isActive': autoPay.isActive,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to update autopay: $e');
+    }
+  }
+
+  Future<void> deleteAutoPay(String id) async {
+    try {
+      await _db.collection('autopays').doc(id).delete();
+    } catch (e) {
+      throw Exception('Failed to delete autopay: $e');
+    }
+  }
+
   Future<void> initializeDefaultData() async {
     try {
       // Check if categories already exist

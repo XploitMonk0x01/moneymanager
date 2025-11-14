@@ -425,7 +425,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     }
 
     final maxY = monthlyData.values.isNotEmpty
-        ? monthlyData.values.reduce((a, b) => a > b ? a : b) * 1.2
+        ? monthlyData.values.reduce((a, b) => a > b ? a : b) * 1.3
         : 1000.0;
 
     return Container(
@@ -433,7 +433,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         border: Border.all(
           color: Theme.of(context)
               .colorScheme
@@ -442,29 +442,95 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
         ),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.05),
-            blurRadius: 10,
+            color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.08),
+            blurRadius: 16,
             offset: const Offset(0, 4),
+            spreadRadius: 2,
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Monthly Expenses Trend',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                child: Icon(
+                  Icons.trending_up,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Monthly Expenses Trend',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    Text(
+                      'Last 6 months overview',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
           SizedBox(
-            height: 250,
+            height: 280,
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
                 maxY: maxY,
                 barTouchData: BarTouchData(
+                  enabled: true,
+                  touchTooltipData: BarTouchTooltipData(
+                    tooltipBgColor: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer
+                        .withOpacity(0.9),
+                    tooltipRoundedRadius: 12,
+                    tooltipPadding: const EdgeInsets.all(12),
+                    getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                      final monthKey =
+                          monthlyData.keys.toList()[group.x.toInt()];
+                      return BarTooltipItem(
+                        '$monthKey\n',
+                        TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: '₹${rod.toY.toStringAsFixed(0)}',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                   touchCallback: (FlTouchEvent event, barTouchResponse) {
                     if (event is FlTapUpEvent) {
                       HapticFeedback.lightImpact();
@@ -481,10 +547,17 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                         if (value.toInt() >= 0 &&
                             value.toInt() < months.length) {
                           return Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: const EdgeInsets.only(top: 12),
                             child: Text(
                               months[value.toInt()],
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        Theme.of(context).colorScheme.onSurface,
+                                  ),
                             ),
                           );
                         }
@@ -495,16 +568,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 60,
+                      reservedSize: 70,
                       getTitlesWidget: (double value, TitleMeta meta) {
-                        return Text(
-                          '₹${(value / 1000).toStringAsFixed(0)}k',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
+                        if (value == 0) return const Text('');
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Text(
+                            '₹${(value / 1000).toStringAsFixed(0)}k',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                          ),
                         );
                       },
                     ),
@@ -514,31 +592,67 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                   rightTitles: const AxisTitles(
                       sideTitles: SideTitles(showTitles: false)),
                 ),
-                borderData: FlBorderData(show: false),
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                    left: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                ),
                 barGroups:
                     monthlyData.entries.toList().asMap().entries.map((entry) {
                   final index = entry.key;
                   final amount = entry.value.value;
+                  final isCurrentMonth = index == monthlyData.length - 1;
 
                   return BarChartGroupData(
                     x: index,
                     barRods: [
                       BarChartRodData(
                         toY: amount,
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 20,
+                        width: 24,
                         borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4)),
+                          top: Radius.circular(8),
+                          bottom: Radius.circular(2),
+                        ),
                         gradient: LinearGradient(
-                          colors: [
-                            Theme.of(context).colorScheme.primary,
-                            Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withValues(alpha: 0.7),
-                          ],
+                          colors: isCurrentMonth
+                              ? [
+                                  Theme.of(context).colorScheme.primary,
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .primary
+                                      .withValues(alpha: 0.7),
+                                ]
+                              : [
+                                  Theme.of(context).colorScheme.secondary,
+                                  Theme.of(context)
+                                      .colorScheme
+                                      .secondary
+                                      .withValues(alpha: 0.6),
+                                ],
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
+                        ),
+                        backDrawRodData: BackgroundBarChartRodData(
+                          show: true,
+                          toY: maxY,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withValues(alpha: 0.3),
                         ),
                       ),
                     ],
@@ -553,16 +667,61 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
                       color: Theme.of(context)
                           .colorScheme
                           .outlineVariant
-                          .withValues(alpha: 0.3),
+                          .withValues(alpha: 0.2),
                       strokeWidth: 1,
+                      dashArray: [5, 5],
                     );
                   },
                 ),
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          // Legend
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildLegendItem(
+                'Previous Months',
+                Theme.of(context).colorScheme.secondary,
+              ),
+              const SizedBox(width: 20),
+              _buildLegendItem(
+                'Current Month',
+                Theme.of(context).colorScheme.primary,
+              ),
+            ],
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [color, color.withValues(alpha: 0.7)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+        ),
+      ],
     );
   }
 

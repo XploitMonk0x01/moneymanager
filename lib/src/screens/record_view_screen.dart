@@ -347,30 +347,7 @@ Shared from MoneyManager App
   }
 
   Future<void> _editRecord() async {
-    final biometricService = ref.read(biometricAuthServiceProvider);
-
-    // Check if biometric is available
-    final bool isBiometricAvailable =
-        await biometricService.isBiometricAvailable();
-
-    if (isBiometricAvailable) {
-      // Require biometric authentication
-      final bool authenticated = await biometricService.authenticateForEdit();
-
-      if (!authenticated) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Authentication failed. Cannot edit record.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-    }
-
-    // Navigate to edit screen (implementation needed in record_screen.dart)
+    // Navigate to edit screen directly without authentication
     if (mounted) {
       Navigator.pop(context);
       // TODO: Show edit sheet with widget.record
@@ -378,30 +355,7 @@ Shared from MoneyManager App
   }
 
   Future<void> _deleteRecord() async {
-    final biometricService = ref.read(biometricAuthServiceProvider);
-
-    // Check if biometric is available
-    final bool isBiometricAvailable =
-        await biometricService.isBiometricAvailable();
-
-    if (isBiometricAvailable) {
-      // Require biometric authentication
-      final bool authenticated = await biometricService.authenticateForDelete();
-
-      if (!authenticated) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Authentication failed. Cannot delete record.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-    }
-
-    // Show confirmation dialog
+    // Show confirmation dialog directly without authentication
     if (mounted) {
       final bool? confirmed = await showDialog<bool>(
         context: context,
