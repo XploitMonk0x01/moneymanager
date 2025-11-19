@@ -4,6 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/providers.dart';
 import '../models/models.dart';
 import '../core/constants/app_constants.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
+import 'package:uuid/uuid.dart';
+import 'dart:io';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
@@ -924,7 +932,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen>
     showAboutDialog(
       context: context,
       applicationName: 'Money Manager',
-      applicationVersion: '1.0.0',
+      applicationVersion: AppConstants.appVersion,
       applicationIcon: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
@@ -1175,14 +1183,37 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen>
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 if (feedbackController.text.trim().isNotEmpty) {
-                  // TODO: Implement feedback submission
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Thank you for your feedback!')),
+
+                  final Uri emailLaunchUri = Uri(
+                    scheme: 'mailto',
+                    path: 'ethicalrobo06@gmail.com',
+                    query: _encodeQueryParameters(<String, String>{
+                      'subject': 'Money Manager Feedback',
+                      'body': feedbackController.text,
+                    }),
                   );
+
+                  try {
+                    if (await canLaunchUrl(emailLaunchUri)) {
+                      await launchUrl(emailLaunchUri);
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Could not launch email client')),
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e')),
+                      );
+                    }
+                  }
                 }
               },
               child: const Text('Send'),
@@ -1191,6 +1222,13 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen>
         );
       },
     );
+  }
+
+  String? _encodeQueryParameters(Map<String, String> params) {
+    return params.entries
+        .map((MapEntry<String, String> e) =>
+            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .join('&');
   }
 
   void _showCloudStorageDialog(BuildContext context) {
@@ -1245,57 +1283,296 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen>
     );
   }
 
-  void _performCloudBackup(BuildContext context) async {
-    // TODO: Implement cloud backup functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Backing up to cloud...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    // Simulate backup process
-    await Future.delayed(const Duration(seconds: 2));
+  Future<void> _performCloudBackup(BuildContext context) async {
+    // Firestore syncs automatically
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data backed up to cloud successfully!')),
+        const SnackBar(
+          content: Text('Data is automatically synced to cloud via Firestore.'),
+          backgroundColor: Colors.green,
+        ),
       );
     }
   }
 
-  void _performCloudRestore(BuildContext context) async {
-    // TODO: Implement cloud restore functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Restoring from cloud...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    // Simulate restore process
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Data restored from cloud successfully!')),
+  Future<void> _performCloudRestore(BuildContext context) async {
+    try {
+      // Pick file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
       );
+
+      if (result == null) return;
+
+      // Show loading dialog
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 16),
+                Text('Restoring data...'),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final file = File(result.files.single.path!);
+      final content = await file.readAsString();
+
+      // Parse Transactions
+      if (content.contains('=== TRANSACTIONS ===')) {
+        final txSection = content
+            .split('=== TRANSACTIONS ===')[1]
+            .split('=== BORROW/LEND RECORDS ===')[0]
+            .trim();
+
+        final txRows = const CsvToListConverter().convert(txSection, eol: '\n');
+
+        if (txRows.isNotEmpty) {
+          for (var i = 1; i < txRows.length; i++) {
+            final row = txRows[i];
+            if (row.length < 7) continue;
+
+            final dateStr = row[0].toString();
+            final type = row[1].toString();
+            final amountStr =
+                row[2].toString().replaceAll('₹', '').replaceAll(',', '');
+            final category = row[3].toString();
+            final paymentMethod = row[4].toString();
+            final upiApp = row[5].toString();
+            final notes = row[6].toString();
+
+            final amount = double.tryParse(amountStr) ?? 0.0;
+            final date = DateTime.tryParse(dateStr) ?? DateTime.now();
+            final isIncome = type == 'Income';
+
+            final tx = Transaction(
+              id: const Uuid().v4(),
+              amount: amount,
+              categoryId: category,
+              paymentMethod: paymentMethod,
+              upiApp: upiApp.isEmpty ? null : upiApp,
+              date: date,
+              notes: notes,
+              isIncome: isIncome,
+            );
+
+            await ref.read(firestoreServiceProvider).addTransaction(tx);
+          }
+        }
+      }
+
+      // Parse Records
+      if (content.contains('=== BORROW/LEND RECORDS ===')) {
+        final recordSection = content
+            .split('=== BORROW/LEND RECORDS ===')[1]
+            .split('=== SUMMARY ===')[0]
+            .trim();
+
+        final recordRows =
+            const CsvToListConverter().convert(recordSection, eol: '\n');
+
+        if (recordRows.isNotEmpty) {
+          for (var i = 1; i < recordRows.length; i++) {
+            final row = recordRows[i];
+            if (row.length < 5) continue;
+
+            final dateStr = row[0].toString();
+            final type = row[1].toString();
+            final person = row[2].toString();
+            final amountStr =
+                row[3].toString().replaceAll('₹', '').replaceAll(',', '');
+            final notes = row[4].toString();
+
+            final amount = double.tryParse(amountStr) ?? 0.0;
+            final date = DateTime.tryParse(dateStr) ?? DateTime.now();
+            final isBorrowed = type == 'Borrowed from';
+
+            final record = Record(
+              id: const Uuid().v4(),
+              person: person,
+              amount: amount,
+              isBorrowed: isBorrowed,
+              date: date,
+              notes: notes,
+            );
+
+            await ref.read(firestoreServiceProvider).addRecord(record);
+          }
+        }
+      }
+
+      // Close loading dialog
+      if (context.mounted) Navigator.of(context).pop();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data restored successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if open
+      if (context.mounted) Navigator.of(context).pop();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Restore failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  void _performLocalBackup(BuildContext context) async {
-    // TODO: Implement local backup functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Creating local backup...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    // Simulate backup process
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Local backup created successfully!')),
+  Future<void> _performLocalBackup(BuildContext context) async {
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('Generating CSV report...'),
+            ],
+          ),
+        ),
       );
+
+      // Get data from providers
+      // Note: AccountsScreen doesn't have transactionStreamProvider or recordListProvider directly available in build method scope
+      // But we can access them via ref.read
+      final transactions = await ref.read(transactionStreamProvider.future);
+      final records = await ref.read(recordListProvider.future);
+
+      // Generate CSV content
+      final csvContent = _generateCsvContent(transactions, records);
+
+      // Get temporary directory
+      final directory = await getTemporaryDirectory();
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'money_manager_backup_$timestamp.csv';
+      final file = File('${directory.path}/$fileName');
+
+      // Write CSV content to file
+      await file.writeAsString(csvContent);
+
+      // Close loading dialog
+      if (context.mounted) Navigator.of(context).pop();
+
+      // Share the file
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Money Manager Data Export',
+        subject: 'Your Money Manager backup data',
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Data exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Close loading dialog if open
+      if (context.mounted) Navigator.of(context).pop();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+  }
+
+  String _generateCsvContent(
+      List<Transaction> transactions, List<Record> records) {
+    final buffer = StringBuffer();
+
+    // Add header with timestamp
+    buffer.writeln('Money Manager Data Export');
+    buffer.writeln(
+        'Generated on: ${DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())}');
+    buffer.writeln('');
+
+    // Transactions section
+    buffer.writeln('=== TRANSACTIONS ===');
+    buffer.writeln('Date,Type,Amount,Category,Payment Method,UPI App,Notes');
+
+    for (final transaction in transactions) {
+      final formattedDate = DateFormat('yyyy-MM-dd').format(transaction.date);
+      final type = transaction.isIncome ? 'Income' : 'Expense';
+      final amount = transaction.amount.toStringAsFixed(2);
+      final category = transaction.categoryId;
+      final paymentMethod = transaction.paymentMethod;
+      final upiApp = transaction.upiApp ?? '';
+      final notes = (transaction.notes ?? '')
+          .replaceAll(',', ';'); // Replace commas to avoid CSV issues
+
+      buffer.writeln(
+          '$formattedDate,$type,₹$amount,$category,$paymentMethod,$upiApp,"$notes"');
+    }
+
+    buffer.writeln('');
+
+    // Records section
+    buffer.writeln('=== BORROW/LEND RECORDS ===');
+    buffer.writeln('Date,Type,Person,Amount,Notes');
+
+    for (final record in records) {
+      final formattedDate = DateFormat('yyyy-MM-dd').format(record.date);
+      final type = record.isBorrowed ? 'Borrowed from' : 'Given to';
+      final person = record.person;
+      final amount = record.amount.toStringAsFixed(2);
+      final notes = record.notes
+          .replaceAll(',', ';'); // Replace commas to avoid CSV issues
+
+      buffer.writeln('$formattedDate,$type,$person,₹$amount,"$notes"');
+    }
+
+    buffer.writeln('');
+
+    // Summary section
+    buffer.writeln('=== SUMMARY ===');
+    final totalIncome = transactions
+        .where((t) => t.isIncome)
+        .fold(0.0, (sum, t) => sum + t.amount);
+    final totalExpense = transactions
+        .where((t) => !t.isIncome)
+        .fold(0.0, (sum, t) => sum + t.amount);
+    final totalBorrowed = records
+        .where((r) => r.isBorrowed)
+        .fold(0.0, (sum, r) => sum + r.amount);
+    final totalLent = records
+        .where((r) => !r.isBorrowed)
+        .fold(0.0, (sum, r) => sum + r.amount);
+
+    buffer.writeln('Total Income,₹${totalIncome.toStringAsFixed(2)}');
+    buffer.writeln('Total Expense,₹${totalExpense.toStringAsFixed(2)}');
+    buffer.writeln(
+        'Net Balance,₹${(totalIncome - totalExpense).toStringAsFixed(2)}');
+    buffer.writeln('Total Borrowed,₹${totalBorrowed.toStringAsFixed(2)}');
+    buffer.writeln('Total Lent,₹${totalLent.toStringAsFixed(2)}');
+    buffer.writeln(
+        'Borrow/Lend Balance,₹${(totalLent - totalBorrowed).toStringAsFixed(2)}');
+
+    return buffer.toString();
   }
 }

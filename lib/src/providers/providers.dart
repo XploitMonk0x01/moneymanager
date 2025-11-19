@@ -157,6 +157,15 @@ class CategoryListNotifier extends StateNotifier<List<Category>> {
     }
   }
 
+  Future<void> updateCategory(Category category) async {
+    try {
+      await _firestoreService.updateCategory(category);
+    } catch (e) {
+      // Error updating category: $e
+      rethrow;
+    }
+  }
+
   Future<void> removeCategory(String id) async {
     try {
       await _firestoreService.deleteCategory(id);

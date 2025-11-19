@@ -155,32 +155,230 @@ class CategoryData {
     {'id': 'other_expense', 'name': 'Other', 'icon': Icons.more_horiz},
   ];
 
+  // Normalize legacy/varied category IDs to standard IDs
+  static String normalizeId(String rawId) {
+    final id = rawId.toLowerCase().trim();
+
+    // Map common variations to standard IDs
+    switch (id) {
+      // Food variations
+      case 'food & dining':
+      case 'food':
+        return 'food';
+
+      // Bills variations
+      case 'bills & utilities':
+      case 'bills':
+        return 'bills';
+
+      // Health variations
+      case 'health & medical':
+      case 'health':
+        return 'health';
+
+      // Shopping variations
+      case 'shopping':
+        return 'shopping';
+
+      // Transport variations
+      case 'transport':
+        return 'transport';
+
+      // Entertainment variations
+      case 'entertainment':
+        return 'entertainment';
+
+      // Education variations
+      case 'education':
+        return 'education';
+
+      // Travel variations
+      case 'travel':
+        return 'travel';
+
+      // Home variations
+      case 'home':
+        return 'home';
+
+      // Groceries variations
+      case 'groceries':
+        return 'groceries';
+
+      // Electronics variations
+      case 'electronics':
+        return 'electronics';
+
+      // Recharge variations
+      case 'recharge':
+      case 'mobile recharge':
+        return 'recharge';
+
+      // Social variations
+      case 'social':
+        return 'social';
+
+      // Salary variations
+      case 'salary':
+        return 'salary';
+
+      // Investment variations
+      case 'investment':
+        return 'investment';
+
+      // Rent variations
+      case 'rent':
+        return 'rent';
+
+      // Insurance variations
+      case 'insurance':
+        return 'insurance';
+
+      // Fuel variations
+      case 'fuel':
+        return 'fuel';
+
+      // Clothing variations
+      case 'clothing':
+        return 'clothing';
+
+      // Beauty variations
+      case 'beauty & personal care':
+      case 'beauty':
+        return 'beauty';
+
+      // Fitness variations
+      case 'fitness & sports':
+      case 'fitness':
+        return 'fitness';
+
+      // Pet variations
+      case 'pet care':
+      case 'pet':
+        return 'pet';
+
+      // Gift variations (expense)
+      case 'gifts & donations':
+      case 'gift_expense':
+        return 'gift_expense';
+
+      // Gift (income)
+      case 'gift':
+        return 'gift';
+
+      // Charity variations
+      case 'charity':
+        return 'charity';
+
+      // Tax variations
+      case 'tax':
+        return 'tax';
+
+      // Fine variations
+      case 'fine & penalty':
+      case 'fine':
+        return 'fine';
+
+      // Repair variations
+      case 'repair & maintenance':
+      case 'repair':
+        return 'repair';
+
+      // Subscription variations
+      case 'subscriptions':
+      case 'subscription':
+        return 'subscription';
+
+      // Internet variations
+      case 'internet':
+        return 'internet';
+
+      // Electricity variations
+      case 'electricity':
+        return 'electricity';
+
+      // Water variations
+      case 'water':
+        return 'water';
+
+      // Gas variations
+      case 'gas':
+        return 'gas';
+
+      // Maintenance variations
+      case 'maintenance':
+        return 'maintenance';
+
+      // Business variations
+      case 'business':
+        return 'business';
+
+      // Bonus variations
+      case 'bonus':
+        return 'bonus';
+
+      // Freelance variations
+      case 'freelance':
+        return 'freelance';
+
+      // Rental variations
+      case 'rental income':
+      case 'rental':
+        return 'rental';
+
+      // Dividend variations
+      case 'dividend':
+        return 'dividend';
+
+      // Refund variations
+      case 'refund':
+        return 'refund';
+
+      // Other income variations
+      case 'other income':
+      case 'other_income':
+        return 'other_income';
+
+      // Other expense variations
+      case 'other':
+      case 'other_expense':
+        return 'other_expense';
+
+      default:
+        return rawId; // Return original if no match
+    }
+  }
+
   static IconData getIcon(String categoryId) {
-    return _categoryIcons[categoryId] ?? Icons.category;
+    final normalized = normalizeId(categoryId);
+    return _categoryIcons[normalized] ?? Icons.category;
   }
 
   static Color getColor(String categoryId) {
-    return _categoryColors[categoryId] ?? Colors.grey;
+    final normalized = normalizeId(categoryId);
+    return _categoryColors[normalized] ?? Colors.grey;
   }
 
   static String getName(String categoryId) {
+    final normalized = normalizeId(categoryId);
+
     // First check income categories
     for (var category in incomeCategories) {
-      if (category['id'] == categoryId) {
+      if (category['id'] == normalized) {
         return category['name'];
       }
     }
     // Then check expense categories
     for (var category in expenseCategories) {
-      if (category['id'] == categoryId) {
+      if (category['id'] == normalized) {
         return category['name'];
       }
     }
-    return categoryId; // Fallback to ID if not found
+    return normalized; // Fallback to normalized ID if not found
   }
 
   static bool isIncomeCategory(String categoryId) {
-    return incomeCategories.any((category) => category['id'] == categoryId);
+    final normalized = normalizeId(categoryId);
+    return incomeCategories.any((category) => category['id'] == normalized);
   }
 
   static List<Map<String, dynamic>> getAllCategories() {

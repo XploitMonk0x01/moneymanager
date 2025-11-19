@@ -5,6 +5,21 @@ All notable changes to MoneyManager will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-05-22
+
+### Added
+
+- 🔄 **Backup & Restore**: Local CSV backup and restore functionality
+- 📤 **Data Export**: Export transactions and records to CSV
+- 📧 **Feedback**: Direct email feedback integration
+- 🛠️ **Settings**: Enhanced settings with restore options
+
+### Changed
+
+- Updated app version to 2.1.0
+- Improved build configuration
+- Enhanced UI consistency
+
 ## [1.0.0] - 2025-09-14
 
 ### Added

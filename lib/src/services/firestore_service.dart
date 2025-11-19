@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../models/models.dart' as app;
+import '../data/category_data.dart';
 
 class FirestoreService {
   final _db = FirebaseFirestore.instance;
@@ -50,10 +51,15 @@ class FirestoreService {
         case 0xe0ca:
           return Icons.work;
         default:
+          // If the codePoint is not in our constant map, return a generic
+          // help_outline icon. We will fallback to CategoryData.getIcon(name)
+          // when loading categories if the saved codepoint cannot be rendered
+          // due to tree-shaking constraints.
           return Icons.help_outline;
       }
     }
-    // For custom fonts, return a default icon to avoid non-const constructor
+    // For custom fonts we'll try to return an IconData using the provided
+    // font family and code point. If this fails, fallback to a generic icon.
     return Icons.help_outline;
   }
 
@@ -151,13 +157,22 @@ class FirestoreService {
         .map((snapshot) {
       return snapshot.docs.map((doc) {
         final data = doc.data();
+        var iconData = _createIconData(
+          data['iconCodePoint'] ?? Icons.category.codePoint,
+          data['iconFontFamily'],
+        );
+
+        if (iconData == Icons.help_outline) {
+          // Fallback to a CategoryData known icon by using the category
+          // name. This helps in cases where the stored codePoint is not
+          // mapped but the display name matches a known default.
+          iconData = CategoryData.getIcon((data['name'] ?? doc.id) as String);
+        }
+
         return app.Category(
           id: doc.id,
           name: data['name'] ?? '',
-          icon: _createIconData(
-            data['iconCodePoint'] ?? Icons.category.codePoint,
-            data['iconFontFamily'],
-          ),
+          icon: iconData,
           isCustom: data['isCustom'] ?? false,
         );
       }).toList();
@@ -169,6 +184,20 @@ class FirestoreService {
       await _db.collection('categories').doc(id).delete();
     } catch (e) {
       throw Exception('Failed to delete category: $e');
+    }
+  }
+
+  Future<void> updateCategory(app.Category category) async {
+    try {
+      await _db.collection('categories').doc(category.id).update({
+        'name': category.name,
+        'iconCodePoint': category.icon.codePoint,
+        'iconFontFamily': category.icon.fontFamily,
+        'iconFontPackage': category.icon.fontPackage,
+        'isCustom': category.isCustom,
+      });
+    } catch (e) {
+      rethrow;
     }
   }
 

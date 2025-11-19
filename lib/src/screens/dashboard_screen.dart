@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import '../models/models.dart';
 import '../providers/providers.dart';
+import '../core/constants/app_constants.dart';
 import '../data/category_data.dart';
 import 'settings_screen.dart';
+import 'transaction_view_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:animations/animations.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -339,7 +342,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget _buildTransactionCard(Transaction transaction, BuildContext context) {
     // Get categories from provider to support custom categories
     final categories = ref.watch(categoryListProvider);
-    final category = categories.firstWhere(
+    final rawCategory = categories.firstWhere(
       (c) => c.id == transaction.categoryId,
       orElse: () => Category(
         id: transaction.categoryId,
@@ -348,87 +351,138 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ),
     );
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: CategoryData.getColor(category.id).withOpacity(0.2),
-          child: Icon(
-            category.icon,
-            color: CategoryData.getColor(category.id),
-          ),
-        ),
-        title: Text(category.name),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (transaction.notes?.isNotEmpty == true) Text(transaction.notes!),
-            Row(
+    // Ensure we have a usable icon and color even for custom categories
+    var category = rawCategory;
+    if (category.icon == Icons.help_outline) {
+      // Try to map by the display name to a canonical id
+      final normalized = CategoryData.normalizeId(category.name);
+      final fallbackIcon = CategoryData.getIcon(normalized);
+      category = Category(
+        id: category.id,
+        name: category.name,
+        icon: fallbackIcon,
+        isCustom: category.isCustom,
+      );
+    }
+
+    final rawColor = CategoryData.getColor(category.id);
+    final categoryColor = rawColor == Colors.grey
+        ? CategoryData.getColor(CategoryData.normalizeId(category.name))
+        : rawColor;
+
+    return OpenContainer(
+      closedElevation: 0,
+      openElevation: 0,
+      closedShape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      closedColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      openColor: categoryColor,
+      transitionDuration: const Duration(milliseconds: 500),
+      transitionType: ContainerTransitionType.fadeThrough,
+      openBuilder: (context, _) =>
+          TransactionViewScreen(transaction: transaction),
+      closedBuilder: (context, openContainer) => Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: InkWell(
+          onTap: openContainer,
+          borderRadius: BorderRadius.circular(12),
+          child: ListTile(
+            leading: Hero(
+              tag: 'transaction_${transaction.id}_icon',
+              child: CircleAvatar(
+                radius: 22,
+                backgroundColor: categoryColor.withOpacity(0.18),
+                child: Icon(
+                  category.icon,
+                  color: (CategoryData.getColor(category.id) == Colors.grey)
+                      ? CategoryData.getColor(
+                          CategoryData.normalizeId(category.name))
+                      : CategoryData.getColor(category.id),
+                  size: 20,
+                ),
+              ),
+            ),
+            title: Text(category.name),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildPaymentMethodIcon(
-                    transaction.paymentMethod, transaction.upiApp, context),
-              ],
-            ),
-          ],
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${transaction.isIncome ? '+' : '-'}₹${NumberFormat('#,##0.00').format(transaction.amount)}',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: _getTransactionColor(transaction.isIncome),
-              ),
-            ),
-            PopupMenuButton<String>(
-              icon: Icon(
-                Icons.more_vert,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              onSelected: (value) {
-                if (value == 'view') {
-                  _viewTransaction(transaction);
-                } else if (value == 'edit') {
-                  _editTransaction(transaction);
-                } else if (value == 'delete') {
-                  _deleteTransaction(transaction);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'view',
-                  child: Row(
-                    children: [
-                      Icon(Icons.visibility),
-                      SizedBox(width: 8),
-                      Text('View Details'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit),
-                      SizedBox(width: 8),
-                      Text('Edit'),
-                    ],
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete),
-                      SizedBox(width: 8),
-                      Text('Delete'),
-                    ],
-                  ),
+                if (transaction.notes?.isNotEmpty == true)
+                  Text(transaction.notes!),
+                Row(
+                  children: [
+                    _buildPaymentMethodIcon(
+                        transaction.paymentMethod, transaction.upiApp, context),
+                  ],
                 ),
               ],
             ),
-          ],
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Hero(
+                  tag: 'transaction_${transaction.id}_amount',
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Text(
+                      '${transaction.isIncome ? '+' : '-'}₹${NumberFormat('#,##0.00').format(transaction.amount)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: _getTransactionColor(transaction.isIncome),
+                      ),
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: Icon(
+                    Icons.more_vert,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'view') {
+                      _viewTransaction(transaction);
+                    } else if (value == 'edit') {
+                      _editTransaction(transaction);
+                    } else if (value == 'delete') {
+                      _deleteTransaction(transaction);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'view',
+                      child: Row(
+                        children: [
+                          Icon(Icons.visibility),
+                          SizedBox(width: 8),
+                          Text('View Details'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit),
+                          SizedBox(width: 8),
+                          Text('Edit'),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete),
+                          SizedBox(width: 8),
+                          Text('Delete'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -509,188 +563,35 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _viewTransaction(Transaction transaction) {
-    final categories = ref.read(categoryListProvider);
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            TransactionViewScreen(transaction: transaction),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOutCubic;
 
-    final category = categories.firstWhere(
-      (c) => c.id == transaction.categoryId,
-      orElse: () => Category(
-        id: transaction.categoryId,
-        name: CategoryData.getName(transaction.categoryId), // Fallback
-        icon: CategoryData.getIcon(transaction.categoryId),
+          var tween = Tween(begin: begin, end: end).chain(
+            CurveTween(curve: curve),
+          );
+
+          var offsetAnimation = animation.drive(tween);
+          var fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+            CurvedAnimation(parent: animation, curve: curve),
+          );
+
+          return SlideTransition(
+            position: offsetAnimation,
+            child: FadeTransition(
+              opacity: fadeAnimation,
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
       ),
     );
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor:
-                  CategoryData.getColor(category.id).withOpacity(0.2),
-              child: Icon(
-                category.icon,
-                color: CategoryData.getColor(category.id),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Transaction Details',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  Text(
-                    DateFormat('MMM dd, yyyy - hh:mm a')
-                        .format(transaction.date),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildDetailRow(
-                'Type',
-                transaction.isIncome ? 'Income' : 'Expense',
-                _getTransactionColor(transaction.isIncome),
-                transaction.isIncome
-                    ? Icons.arrow_downward
-                    : Icons.arrow_upward,
-              ),
-              const Divider(),
-              _buildDetailRow(
-                'Amount',
-                '₹${NumberFormat('#,##,##0.00').format(transaction.amount)}',
-                _getTransactionColor(transaction.isIncome),
-                Icons.currency_rupee,
-              ),
-              const Divider(),
-              _buildDetailRow(
-                'Category',
-                category.name,
-                CategoryData.getColor(category.id),
-                category.icon,
-              ),
-              const Divider(),
-              _buildDetailRow(
-                'Payment Method',
-                transaction.paymentMethod,
-                Theme.of(context).colorScheme.primary,
-                _getPaymentIcon(transaction.paymentMethod),
-              ),
-              if (transaction.upiApp != null) ...[
-                const Divider(),
-                _buildDetailRow(
-                  'UPI App',
-                  transaction.upiApp!,
-                  Theme.of(context).colorScheme.primary,
-                  Icons.account_balance_wallet,
-                ),
-              ],
-              if (transaction.notes?.isNotEmpty == true) ...[
-                const Divider(),
-                _buildDetailRow(
-                  'Notes',
-                  transaction.notes!,
-                  Theme.of(context).colorScheme.onSurface,
-                  Icons.note,
-                ),
-              ],
-              const Divider(),
-              _buildDetailRow(
-                'Date',
-                DateFormat('EEEE, MMM dd, yyyy').format(transaction.date),
-                Theme.of(context).colorScheme.onSurface,
-                Icons.calendar_today,
-              ),
-              _buildDetailRow(
-                'Time',
-                DateFormat('hh:mm a').format(transaction.date),
-                Theme.of(context).colorScheme.onSurface,
-                Icons.access_time,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-          FilledButton.icon(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _editTransaction(transaction);
-            },
-            icon: const Icon(Icons.edit),
-            label: const Text('Edit'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(
-      String label, String value, Color color, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: color,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  IconData _getPaymentIcon(String paymentMethod) {
-    switch (paymentMethod.toLowerCase()) {
-      case 'upi':
-        return Icons.account_balance_wallet;
-      case 'cash':
-        return Icons.money;
-      case 'card':
-      case 'credit card':
-      case 'debit card':
-        return Icons.credit_card;
-      case 'bank transfer':
-        return Icons.account_balance;
-      default:
-        return Icons.payment;
-    }
   }
 
   void _editTransaction(Transaction transaction) {
@@ -812,7 +713,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     showAboutDialog(
       context: context,
       applicationName: 'Money Manager',
-      applicationVersion: '1.0.0',
+      applicationVersion: AppConstants.appVersion,
       applicationIcon: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
@@ -1426,17 +1327,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       final transactionsSnapshot = await firestore.FirebaseFirestore.instance
           .collection('transactions')
           .get();
-      final recordsSnapshot = await firestore.FirebaseFirestore.instance
-          .collection('records')
-          .get();
+      // final recordsSnapshot = await firestore.FirebaseFirestore.instance
+      //     .collection('records')
+      //     .get();
 
       // Create backup data structure
-      final backupData = {
-        'timestamp': DateTime.now().toIso8601String(),
-        'transactions':
-            transactionsSnapshot.docs.map((doc) => doc.data()).toList(),
-        'records': recordsSnapshot.docs.map((doc) => doc.data()).toList(),
-      };
+      // final backupData = {
+      //   'timestamp': DateTime.now().toIso8601String(),
+      //   'transactions':
+      //       transactionsSnapshot.docs.map((doc) => doc.data()).toList(),
+      //   'records': recordsSnapshot.docs.map((doc) => doc.data()).toList(),
+      // };
 
       // Save to local database
       final localDb = ref.read(localDatabaseServiceProvider);
@@ -1464,16 +1365,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           SnackBar(
             content: const Text('Local backup created successfully!'),
             backgroundColor: Colors.green.shade600,
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) Navigator.pop(context);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Local backup failed: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
@@ -1836,9 +1727,90 @@ class _CategoryManagementSheetState
   }
 
   void _editCategory(Category category) {
-    // Placeholder for edit functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit ${category.name} coming soon!')),
+    _nameController.text = category.name;
+    _selectedIcon = category.icon;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 16,
+            right: 16,
+            top: 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Edit Category',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 16),
+              Form(
+                key: _formKey,
+                child: TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Category Name',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Please enter a category name';
+                    }
+                    return null;
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: () async {
+                    if (_formKey.currentState?.validate() ?? false) {
+                      final updated = Category(
+                        id: category.id,
+                        name: _nameController.text.trim(),
+                        icon: _selectedIcon,
+                        isCustom: true,
+                      );
+
+                      try {
+                        await ref
+                            .read(categoryListProvider.notifier)
+                            .updateCategory(updated);
+
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Category updated successfully!'),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to update category: $e'),
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -2240,7 +2212,7 @@ class _AddTransactionSheetState extends ConsumerState<_AddTransactionSheet> {
                         labelText: 'Category',
                         border: OutlineInputBorder(),
                       ),
-                      value: _category.isEmpty ? null : _category,
+                      initialValue: _category.isEmpty ? null : _category,
                       items: widget.categories.map((category) {
                         return DropdownMenuItem(
                           value: category.id,
@@ -2273,7 +2245,7 @@ class _AddTransactionSheetState extends ConsumerState<_AddTransactionSheet> {
                         labelText: 'Payment Method',
                         border: OutlineInputBorder(),
                       ),
-                      value: _paymentMethod,
+                      initialValue: _paymentMethod,
                       items: const [
                         DropdownMenuItem(value: 'Cash', child: Text('Cash')),
                         DropdownMenuItem(value: 'Card', child: Text('Card')),
@@ -2296,7 +2268,7 @@ class _AddTransactionSheetState extends ConsumerState<_AddTransactionSheet> {
                           labelText: 'UPI App',
                           border: OutlineInputBorder(),
                         ),
-                        value: _upiApp,
+                        initialValue: _upiApp,
                         items: upiApps.map((app) {
                           return DropdownMenuItem(
                             value: app.name,
@@ -2534,7 +2506,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                value: _category.isEmpty ? null : _category,
+                initialValue: _category.isEmpty ? null : _category,
                 items: widget.categories.map((category) {
                   return DropdownMenuItem(
                     value: category.id,
@@ -2591,7 +2563,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                value: _paymentMethod.isEmpty ? null : _paymentMethod,
+                initialValue: _paymentMethod.isEmpty ? null : _paymentMethod,
                 items: ['Cash', 'Card', 'UPI', 'Bank Transfer']
                     .map((method) => DropdownMenuItem(
                           value: method,
@@ -2622,7 +2594,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  value: _upiApp,
+                  initialValue: _upiApp,
                   items: widget.upiApps.map((app) {
                     return DropdownMenuItem(
                       value: app.name,
@@ -2719,7 +2691,26 @@ class _AutoPayManagementSheet extends ConsumerStatefulWidget {
 }
 
 class _AutoPayManagementSheetState
-    extends ConsumerState<_AutoPayManagementSheet> {
+    extends ConsumerState<_AutoPayManagementSheet>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final autoPays = ref.watch(autoPayListProvider);
@@ -2828,206 +2819,31 @@ class _AutoPayManagementSheetState
                       final isExpired = autoPay.isExpired;
                       final daysRemaining = autoPay.daysRemaining;
 
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(
-                            color: isExpired
-                                ? Colors.red.withValues(alpha: 0.3)
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .outlineVariant
-                                    .withValues(alpha: 0.3),
+                      // Staggered animation for each item
+                      final animation =
+                          Tween<double>(begin: 0.0, end: 1.0).animate(
+                        CurvedAnimation(
+                          parent: _animationController,
+                          curve: Interval(
+                            (index * 0.1).clamp(0.0, 1.0),
+                            ((index * 0.1) + 0.5).clamp(0.0, 1.0),
+                            curve: Curves.easeOutCubic,
                           ),
                         ),
-                        child: InkWell(
-                          onTap: () => _showEditAutoPaySheet(context, autoPay),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: isExpired
-                                            ? Colors.red.shade50
-                                            : Theme.of(context)
-                                                .colorScheme
-                                                .primaryContainer,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Icon(
-                                        Icons.autorenew,
-                                        color: isExpired
-                                            ? Colors.red.shade700
-                                            : Theme.of(context)
-                                                .colorScheme
-                                                .onPrimaryContainer,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            autoPay.title,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .titleMedium
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Row(
-                                            children: [
-                                              Icon(
-                                                Icons.account_balance_wallet,
-                                                size: 14,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                autoPay.upiApp,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .bodySmall
-                                                    ?.copyWith(
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .onSurfaceVariant,
-                                                    ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          '\u20b9${autoPay.amount.toStringAsFixed(0)}',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleLarge
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.bold,
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .primary,
-                                              ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: isExpired
-                                                ? Colors.red.shade100
-                                                : daysRemaining <= 7
-                                                    ? Colors.orange.shade100
-                                                    : Colors.green.shade100,
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            isExpired
-                                                ? 'Expired'
-                                                : '$daysRemaining days left',
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  color: isExpired
-                                                      ? Colors.red.shade700
-                                                      : daysRemaining <= 7
-                                                          ? Colors
-                                                              .orange.shade700
-                                                          : Colors
-                                                              .green.shade700,
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 11,
-                                                ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today,
-                                      size: 14,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Valid: ${DateFormat('dd MMM yyyy').format(autoPay.startDate)} - ${DateFormat('dd MMM yyyy').format(autoPay.validUntil)}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                                if (autoPay.notes?.isNotEmpty == true) ...[
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        Icons.note,
-                                        size: 14,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          autoPay.notes!,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
-                                                fontStyle: FontStyle.italic,
-                                              ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
+                      );
+
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.2),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: _buildAutoPayCard(
+                            context,
+                            autoPay,
+                            isExpired,
+                            daysRemaining,
                           ),
                         ),
                       );
@@ -3035,6 +2851,209 @@ class _AutoPayManagementSheetState
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAutoPayCard(
+    BuildContext context,
+    AutoPay autoPay,
+    bool isExpired,
+    int daysRemaining,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isExpired
+              ? Colors.red.withValues(alpha: 0.3)
+              : Theme.of(context)
+                  .colorScheme
+                  .outlineVariant
+                  .withValues(alpha: 0.3),
+        ),
+      ),
+      child: InkWell(
+        onTap: () => _showEditAutoPaySheet(context, autoPay),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(
+                      begin: Theme.of(context).colorScheme.primaryContainer,
+                      end: isExpired
+                          ? Colors.red.shade50
+                          : Theme.of(context).colorScheme.primaryContainer,
+                    ),
+                    duration: const Duration(milliseconds: 300),
+                    builder: (context, color, child) {
+                      return Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.autorenew,
+                          color: isExpired
+                              ? Colors.red.shade700
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
+                          size: 20,
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          autoPay.title,
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.account_balance_wallet,
+                              size: 14,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              autoPay.upiApp,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '\u20b9${autoPay.amount.toStringAsFixed(0)}',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      TweenAnimationBuilder<Color?>(
+                        tween: ColorTween(
+                          begin: Colors.green.shade100,
+                          end: isExpired
+                              ? Colors.red.shade100
+                              : daysRemaining <= 7
+                                  ? Colors.orange.shade100
+                                  : Colors.green.shade100,
+                        ),
+                        duration: const Duration(milliseconds: 300),
+                        builder: (context, color, child) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isExpired
+                                  ? 'Expired'
+                                  : '$daysRemaining days left',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: isExpired
+                                        ? Colors.red.shade700
+                                        : daysRemaining <= 7
+                                            ? Colors.orange.shade700
+                                            : Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                  ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today,
+                    size: 14,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Valid: ${DateFormat('dd MMM yyyy').format(autoPay.startDate)} - ${DateFormat('dd MMM yyyy').format(autoPay.validUntil)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+              if (autoPay.notes?.isNotEmpty == true) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.note,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        autoPay.notes!,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontStyle: FontStyle.italic,
+                            ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -3180,7 +3199,7 @@ class _AddAutoPaySheetState extends ConsumerState<_AddAutoPaySheet> {
                   ),
                   prefixIcon: const Icon(Icons.category),
                 ),
-                value: _categoryId.isEmpty ? null : _categoryId,
+                initialValue: _categoryId.isEmpty ? null : _categoryId,
                 items: categories.map((category) {
                   return DropdownMenuItem(
                     value: category.id,
@@ -3206,7 +3225,7 @@ class _AddAutoPaySheetState extends ConsumerState<_AddAutoPaySheet> {
                   ),
                   prefixIcon: const Icon(Icons.account_balance_wallet),
                 ),
-                value: _upiApp.isEmpty ? null : _upiApp,
+                initialValue: _upiApp.isEmpty ? null : _upiApp,
                 items: upiApps.map((app) {
                   return DropdownMenuItem(
                     value: app.name,
@@ -3516,7 +3535,7 @@ class _EditAutoPaySheetState extends ConsumerState<_EditAutoPaySheet> {
                   ),
                   prefixIcon: const Icon(Icons.category),
                 ),
-                value: _categoryId,
+                initialValue: _categoryId,
                 items: categories.map((category) {
                   return DropdownMenuItem(
                     value: category.id,
@@ -3536,7 +3555,7 @@ class _EditAutoPaySheetState extends ConsumerState<_EditAutoPaySheet> {
                   ),
                   prefixIcon: const Icon(Icons.account_balance_wallet),
                 ),
-                value: _upiApp,
+                initialValue: _upiApp,
                 items: upiApps.map((app) {
                   return DropdownMenuItem(
                     value: app.name,

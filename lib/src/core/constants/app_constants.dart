@@ -1,7 +1,7 @@
 class AppConstants {
   // App Information
   static const String appName = 'MoneyManager';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '2.1.0';
 
   // UI Constants
   static const double defaultPadding = 16.0;
