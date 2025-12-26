@@ -655,12 +655,25 @@ Shared from MoneyManager App
   }
 
   void _editTransaction() {
-    // Navigate back and trigger edit
-    Navigator.pop(context);
-    // TODO: Trigger edit sheet from dashboard
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Edit functionality - coming from dashboard')),
+    final categories = ref.read(categoryListProvider);
+    final upiApps = ref.read(upiAppListProvider);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _EditTransactionSheet(
+        transaction: widget.transaction,
+        categories: categories,
+        upiApps: upiApps,
+        onUpdated: () {
+          // Refresh the screen after update
+          if (mounted) {
+            Navigator.pop(context); // Close edit sheet
+            Navigator.pop(context); // Return to list and refresh
+          }
+        },
+      ),
     );
   }
 
@@ -708,6 +721,366 @@ Shared from MoneyManager App
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to delete: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+}
+
+// Edit Transaction Sheet Widget
+class _EditTransactionSheet extends ConsumerStatefulWidget {
+  final Transaction transaction;
+  final List<Category> categories;
+  final List<UpiApp> upiApps;
+  final VoidCallback onUpdated;
+
+  const _EditTransactionSheet({
+    required this.transaction,
+    required this.categories,
+    required this.upiApps,
+    required this.onUpdated,
+  });
+
+  @override
+  ConsumerState<_EditTransactionSheet> createState() =>
+      _EditTransactionSheetState();
+}
+
+class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late double _amount;
+  late String _category;
+  late String _paymentMethod;
+  late String? _upiApp;
+  late String _notes;
+  late DateTime _date;
+  late bool _isIncome;
+
+  @override
+  void initState() {
+    super.initState();
+    _amount = widget.transaction.amount;
+    _category = widget.transaction.categoryId;
+    _paymentMethod = widget.transaction.paymentMethod;
+    _upiApp = widget.transaction.upiApp;
+    _notes = widget.transaction.notes ?? '';
+    _date = widget.transaction.date;
+    _isIncome = widget.transaction.isIncome;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 16,
+          right: 16,
+          top: 16,
+        ),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle bar
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                Text(
+                  'Edit Transaction',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 24),
+
+                // Income/Expense Toggle
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _isIncome = false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: !_isIncome
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                            ),
+                            child: Text(
+                              'Expense',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: !_isIncome
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _isIncome = true),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: _isIncome
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                            ),
+                            child: Text(
+                              'Income',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _isIncome
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Amount field
+                TextFormField(
+                  initialValue: _amount.toString(),
+                  decoration: InputDecoration(
+                    labelText: 'Amount',
+                    prefixText: '₹',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter amount';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid amount';
+                    }
+                    return null;
+                  },
+                  onSaved: (value) => _amount = double.parse(value!),
+                ),
+                const SizedBox(height: 16),
+
+                // Category dropdown
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    labelText: 'Category',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  value: _category.isEmpty ? null : _category,
+                  items: widget.categories.map((category) {
+                    return DropdownMenuItem(
+                      value: category.id,
+                      child: Row(
+                        children: [
+                          Icon(category.icon,
+                              size: 20,
+                              color: CategoryData.getColor(category.id)),
+                          const SizedBox(width: 8),
+                          Text(category.name),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setState(() => _category = value!),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please select a category';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Date picker
+                InkWell(
+                  onTap: () => _selectDate(),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                          color: Theme.of(context).colorScheme.outline),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today,
+                            color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 12),
+                        Text(
+                          DateFormat('MMM dd, yyyy').format(_date),
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Payment method dropdown
+                DropdownButtonFormField<String>(
+                  decoration: InputDecoration(
+                    labelText: 'Payment Method',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  value: _paymentMethod,
+                  items: ['Cash', 'UPI', 'Card', 'Bank Transfer']
+                      .map((method) => DropdownMenuItem(
+                            value: method,
+                            child: Text(method),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _paymentMethod = value!;
+                      if (value != 'UPI') _upiApp = null;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // UPI App dropdown (only if UPI is selected)
+                if (_paymentMethod == 'UPI')
+                  DropdownButtonFormField<String>(
+                    decoration: InputDecoration(
+                      labelText: 'UPI App',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    value: _upiApp,
+                    items: widget.upiApps
+                        .map((app) => DropdownMenuItem(
+                              value: app.name,
+                              child: Text(app.name),
+                            ))
+                        .toList(),
+                    onChanged: (value) => setState(() => _upiApp = value),
+                  ),
+                if (_paymentMethod == 'UPI') const SizedBox(height: 16),
+
+                // Notes field
+                TextFormField(
+                  initialValue: _notes,
+                  decoration: InputDecoration(
+                    labelText: 'Notes',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  maxLines: 2,
+                  onSaved: (value) => _notes = value ?? '',
+                ),
+                const SizedBox(height: 24),
+
+                // Save button
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _saveTransaction,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Save Changes'),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() => _date = picked);
+    }
+  }
+
+  Future<void> _saveTransaction() async {
+    if (_formKey.currentState?.validate() ?? false) {
+      _formKey.currentState?.save();
+
+      final updatedTransaction = Transaction(
+        id: widget.transaction.id,
+        amount: _amount,
+        categoryId: _category,
+        paymentMethod: _paymentMethod,
+        upiApp: _upiApp,
+        notes: _notes.isEmpty ? null : _notes,
+        date: _date,
+        isIncome: _isIncome,
+      );
+
+      try {
+        await ref
+            .read(transactionListProvider.notifier)
+            .updateTransaction(updatedTransaction);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Transaction updated successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          widget.onUpdated();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update: $e'),
               backgroundColor: Colors.red,
             ),
           );

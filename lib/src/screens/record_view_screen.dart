@@ -347,10 +347,23 @@ Shared from MoneyManager App
   }
 
   Future<void> _editRecord() async {
-    // Navigate to edit screen directly without authentication
     if (mounted) {
-      Navigator.pop(context);
-      // TODO: Show edit sheet with widget.record
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        builder: (context) => _EditRecordSheet(
+          record: widget.record,
+          onUpdated: () {
+            if (mounted) {
+              Navigator.pop(context); // Close edit sheet
+              Navigator.pop(context); // Return to list
+            }
+          },
+        ),
+      );
     }
   }
 
@@ -402,6 +415,190 @@ Shared from MoneyManager App
               ),
             );
           }
+        }
+      }
+    }
+  }
+}
+
+// Edit Record Sheet Widget
+class _EditRecordSheet extends ConsumerStatefulWidget {
+  final Record record;
+  final VoidCallback onUpdated;
+
+  const _EditRecordSheet({
+    required this.record,
+    required this.onUpdated,
+  });
+
+  @override
+  ConsumerState<_EditRecordSheet> createState() => _EditRecordSheetState();
+}
+
+class _EditRecordSheetState extends ConsumerState<_EditRecordSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late String _person;
+  late double _amount;
+  late bool _isBorrowed;
+  late DateTime _date;
+  late String _notes;
+
+  @override
+  void initState() {
+    super.initState();
+    _person = widget.record.person;
+    _amount = widget.record.amount;
+    _isBorrowed = widget.record.isBorrowed;
+    _date = widget.record.date;
+    _notes = widget.record.notes;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 24,
+        right: 24,
+        top: 24,
+      ),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Text('Edit Record',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                initialValue: _person,
+                decoration: const InputDecoration(labelText: 'Person'),
+                validator: (val) =>
+                    val == null || val.isEmpty ? 'Enter name' : null,
+                onSaved: (val) => _person = val ?? '',
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                initialValue: _amount.toString(),
+                decoration: const InputDecoration(
+                    labelText: 'Amount (INR)', prefixText: '₹'),
+                keyboardType: TextInputType.number,
+                validator: (val) => val == null || double.tryParse(val) == null
+                    ? 'Enter valid amount'
+                    : null,
+                onSaved: (val) => _amount = double.tryParse(val ?? '') ?? 0,
+              ),
+              const SizedBox(height: 12),
+
+              SwitchListTile(
+                title: Text(_isBorrowed ? 'Borrowed' : 'Given'),
+                value: _isBorrowed,
+                onChanged: (val) {
+                  setState(() => _isBorrowed = val);
+                },
+                secondary:
+                    Icon(_isBorrowed ? Icons.call_received : Icons.call_made),
+              ),
+              const SizedBox(height: 12),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                        'Date: ${DateFormat('dd MMM yyyy').format(_date)}'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _date,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) setState(() => _date = picked);
+                    },
+                    child: const Text('Pick Date'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              TextFormField(
+                initialValue: _notes,
+                decoration: const InputDecoration(labelText: 'Notes'),
+                onSaved: (val) => _notes = val ?? '',
+              ),
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text('Update'),
+                  style: ElevatedButton.styleFrom(
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: _saveRecord,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveRecord() async {
+    if (_formKey.currentState?.validate() ?? false) {
+      _formKey.currentState?.save();
+
+      final updatedRecord = Record(
+        id: widget.record.id,
+        person: _person,
+        amount: _amount,
+        isBorrowed: _isBorrowed,
+        date: _date,
+        notes: _notes,
+      );
+
+      try {
+        await ref
+            .read(recordListNotifierProvider.notifier)
+            .updateRecord(updatedRecord);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Record updated successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          widget.onUpdated();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     }
