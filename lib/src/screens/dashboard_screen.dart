@@ -5,7 +5,7 @@ import '../models/models.dart';
 import '../providers/providers.dart';
 import '../core/constants/app_constants.dart';
 import '../data/category_data.dart';
-import 'settings_screen.dart';
+import '../widgets/widgets.dart';
 import 'transaction_view_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:animations/animations.dart';
@@ -20,6 +20,10 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   late ScrollController _scrollController;
   bool _isExtended = true;
+  String? _selectedCategoryId;
+  String _searchQuery = '';
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -35,27 +39,170 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  /// Filters transactions based on selected category and search query
+  List<Transaction> _filterTransactions(List<Transaction> transactions) {
+    var filtered = transactions;
+
+    // Filter by category if selected
+    if (_selectedCategoryId != null) {
+      filtered =
+          filtered.where((t) => t.categoryId == _selectedCategoryId).toList();
+    }
+
+    // Filter by search query
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      final categories = ref.read(categoryListProvider);
+
+      filtered = filtered.where((t) {
+        // Search in category name
+        final category = categories.firstWhere(
+          (c) => c.id == t.categoryId,
+          orElse: () => Category(
+            id: t.categoryId,
+            name: CategoryData.getName(t.categoryId),
+            icon: Icons.category,
+          ),
+        );
+        if (category.name.toLowerCase().contains(query)) return true;
+
+        // Search in notes
+        if (t.notes?.toLowerCase().contains(query) == true) return true;
+
+        // Search in amount
+        if (t.amount.toString().contains(query)) return true;
+
+        // Search in payment method
+        if (t.paymentMethod.toLowerCase().contains(query)) return true;
+
+        // Search in UPI app
+        if (t.upiApp?.toLowerCase().contains(query) == true) return true;
+
+        return false;
+      }).toList();
+    }
+
+    return filtered;
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _selectedCategoryId = null;
+      _searchQuery = '';
+      _searchController.clear();
+      _isSearching = false;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final transactionsAsyncValue = ref.watch(transactionStreamProvider);
+    final categories = ref.watch(categoryListProvider);
+
+    // Get selected category name for display
+    String? selectedCategoryName;
+    if (_selectedCategoryId != null) {
+      final category = categories.firstWhere(
+        (c) => c.id == _selectedCategoryId,
+        orElse: () => Category(
+          id: _selectedCategoryId!,
+          name: CategoryData.getName(_selectedCategoryId!),
+          icon: Icons.category,
+        ),
+      );
+      selectedCategoryName = category.name;
+    }
 
     return Scaffold(
       appBar: AppBar(
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
-        title: const Text('MoneyManager'),
-        centerTitle: true,
+        leading: _isSearching
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  setState(() {
+                    _isSearching = false;
+                    _searchQuery = '';
+                    _searchController.clear();
+                  });
+                },
+              )
+            : Builder(
+                builder: (context) => IconButton(
+                  icon: const Icon(Icons.menu),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
+        title: _isSearching
+            ? Container(
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search transactions...',
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 15,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 20),
+                            onPressed: () {
+                              setState(() {
+                                _searchQuery = '';
+                                _searchController.clear();
+                              });
+                            },
+                          )
+                        : null,
+                  ),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontSize: 15,
+                      ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+              )
+            : Text(_selectedCategoryId != null
+                ? selectedCategoryName ?? 'MoneyManager'
+                : 'MoneyManager'),
+        centerTitle: !_isSearching,
         elevation: 0,
         scrolledUnderElevation: 4,
         backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
+          if (!_isSearching)
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                setState(() {
+                  _isSearching = true;
+                });
+              },
+              tooltip: 'Search transactions',
+            ),
+          if (_selectedCategoryId != null && !_isSearching)
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: _clearFilters,
+              tooltip: 'Clear filter',
+            ),
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
@@ -68,9 +215,23 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 case 'autopay':
                   _showAutoPayManagement(context);
                   break;
+                case 'view_by_category':
+                  _showCategoryFilterSheet(context);
+                  break;
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'view_by_category',
+                child: Row(
+                  children: [
+                    Icon(Icons.filter_list),
+                    SizedBox(width: 8),
+                    Text('View by Category'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'categories',
                 child: Row(
@@ -105,191 +266,141 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
+      drawer: AppDrawer(
+        onDeleteReset: () => _showDeleteResetDialog(context),
+        onFeedback: () => _showFeedbackDialog(context),
+        onCloudStorage: () => _showCloudStorageDialog(context),
+        onManageCategories: () => _showCategoryManagement(context),
+        onManageUpiApps: () => _showUpiAppManagement(context),
+        onAbout: () => _showAboutDialog(context),
+      ),
+      body: transactionsAsyncValue.when(
+        data: (allTransactions) {
+          final transactions = _filterTransactions(allTransactions);
+
+          if (allTransactions.isEmpty) {
+            return const Center(
+              child: Text(
+                'No transactions yet.\nTap + to add your first transaction!',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.grey),
               ),
+            );
+          }
+
+          if (transactions.isEmpty) {
+            return Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons.account_balance_wallet,
-                    size: 40,
-                    color: Theme.of(context).colorScheme.onPrimary,
+                    Icons.search_off,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No transactions found',
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'MoneyManager',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  Text(
-                    'Manage your finances',
+                    _selectedCategoryId != null
+                        ? 'No transactions in this category'
+                        : 'Try a different search term',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onPrimary
-                              .withValues(alpha: 0.8),
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
+                  const SizedBox(height: 16),
+                  FilledButton.tonal(
+                    onPressed: _clearFilters,
+                    child: const Text('Clear Filters'),
+                  ),
                 ],
               ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_forever),
-              title: const Text('Delete & Reset'),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeleteResetDialog(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.feedback),
-              title: const Text('Feedback'),
-              onTap: () {
-                Navigator.pop(context);
-                _showFeedbackDialog(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_sync),
-              title: const Text('Cloud Storage'),
-              onTap: () {
-                Navigator.pop(context);
-                _showCloudStorageDialog(context);
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.category),
-              title: const Text('Manage Categories'),
-              onTap: () {
-                Navigator.pop(context);
-                _showCategoryManagement(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.account_balance_wallet),
-              title: const Text('Manage UPI Apps'),
-              onTap: () {
-                Navigator.pop(context);
-                _showUpiAppManagement(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsScreen(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('About'),
-              onTap: () {
-                Navigator.pop(context);
-                _showAboutDialog(context);
-              },
-            ),
-          ],
-        ),
-      ),
-      body: transactionsAsyncValue.when(
-        data: (transactions) => transactions.isEmpty
-            ? const Center(
-                child: Text(
-                  'No transactions yet.\nTap + to add your first transaction!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
+            );
+          }
+
+          return CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              // Show active filter chip
+              if (_selectedCategoryId != null || _searchQuery.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _buildActiveFiltersBar(
+                      transactions.length, allTransactions.length),
                 ),
-              )
-            : CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.all(16),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final groupedTransactions =
-                              _groupTransactionsByDate(transactions);
-                          final dates = groupedTransactions.keys.toList()
-                            ..sort((a, b) => b.compareTo(a));
+              SliverPadding(
+                padding: const EdgeInsets.all(16),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final groupedTransactions =
+                          _groupTransactionsByDate(transactions);
+                      final dates = groupedTransactions.keys.toList()
+                        ..sort((a, b) => b.compareTo(a));
 
-                          if (index >= dates.length) return null;
+                      if (index >= dates.length) return null;
 
-                          final date = dates[index];
-                          final dayTransactions = groupedTransactions[date]!;
+                      final date = dates[index];
+                      final dayTransactions = groupedTransactions[date]!;
 
-                          // Calculate net amount (income - expenses)
-                          final totalIncome = dayTransactions
-                              .where((t) => t.isIncome)
-                              .fold<double>(0, (sum, t) => sum + t.amount);
-                          final totalExpenses = dayTransactions
-                              .where((t) => !t.isIncome)
-                              .fold<double>(0, (sum, t) => sum + t.amount);
-                          final netAmount = totalIncome - totalExpenses;
+                      // Calculate net amount (income - expenses)
+                      final totalIncome = dayTransactions
+                          .where((t) => t.isIncome)
+                          .fold<double>(0, (sum, t) => sum + t.amount);
+                      final totalExpenses = dayTransactions
+                          .where((t) => !t.isIncome)
+                          .fold<double>(0, (sum, t) => sum + t.amount);
+                      final netAmount = totalIncome - totalExpenses;
 
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _formatDate(date),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                    Text(
-                                      '${netAmount >= 0 ? '+' : ''}₹${NumberFormat('#,##0.00').format(netAmount.abs())}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            color: _getTransactionColor(
-                                                netAmount >= 0),
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                    ),
-                                  ],
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  _formatDate(date),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
                                 ),
-                              ),
-                              ...dayTransactions.map((transaction) =>
-                                  _buildTransactionCard(transaction, context)),
-                              const SizedBox(height: 16),
-                            ],
-                          );
-                        },
-                        childCount:
-                            _groupTransactionsByDate(transactions).keys.length,
-                      ),
-                    ),
+                                Text(
+                                  '${netAmount >= 0 ? '+' : ''}₹${NumberFormat('#,##0.00').format(netAmount.abs())}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        color: _getTransactionColor(
+                                            netAmount >= 0),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          ...dayTransactions.map((transaction) =>
+                              _buildTransactionCard(transaction, context)),
+                          const SizedBox(height: 16),
+                        ],
+                      );
+                    },
+                    childCount:
+                        _groupTransactionsByDate(transactions).keys.length,
                   ),
-                ],
+                ),
               ),
-        loading: () => _buildExpressiveLoading(),
+            ],
+          );
+        },
+        loading: () => const TransactionListSkeleton(itemCount: 6),
         error: (error, stack) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -320,15 +431,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddTransactionSheet(context),
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(
-          _isExtended ? 'Add Transaction' : '',
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
+      floatingActionButton: _isExtended
+          ? FloatingActionButton.extended(
+              onPressed: () => _showAddTransactionSheet(context),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                'Add Transaction',
+                style: TextStyle(color: Colors.white),
+              ),
+            )
+          : FloatingActionButton(
+              onPressed: () => _showAddTransactionSheet(context),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
     );
   }
 
@@ -337,6 +454,190 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     return isIncome
         ? Colors.green.shade600
         : Theme.of(context).colorScheme.error;
+  }
+
+  /// Builds the active filters bar showing current filter state
+  Widget _buildActiveFiltersBar(int filteredCount, int totalCount) {
+    final categories = ref.watch(categoryListProvider);
+    String? categoryName;
+
+    if (_selectedCategoryId != null) {
+      final category = categories.firstWhere(
+        (c) => c.id == _selectedCategoryId,
+        orElse: () => Category(
+          id: _selectedCategoryId!,
+          name: CategoryData.getName(_selectedCategoryId!),
+          icon: Icons.category,
+        ),
+      );
+      categoryName = category.name;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.filter_list,
+            size: 16,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Showing $filteredCount of $totalCount',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(width: 8),
+          if (_selectedCategoryId != null)
+            Chip(
+              label: Text(categoryName ?? 'Category'),
+              deleteIcon: const Icon(Icons.close, size: 16),
+              onDeleted: () {
+                setState(() {
+                  _selectedCategoryId = null;
+                });
+              },
+              visualDensity: VisualDensity.compact,
+              labelStyle: Theme.of(context).textTheme.labelSmall,
+              padding: EdgeInsets.zero,
+            ),
+          if (_searchQuery.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            Chip(
+              label: Text('"$_searchQuery"'),
+              deleteIcon: const Icon(Icons.close, size: 16),
+              onDeleted: () {
+                setState(() {
+                  _searchQuery = '';
+                  _searchController.clear();
+                });
+              },
+              visualDensity: VisualDensity.compact,
+              labelStyle: Theme.of(context).textTheme.labelSmall,
+              padding: EdgeInsets.zero,
+            ),
+          ],
+          const Spacer(),
+          TextButton(
+            onPressed: _clearFilters,
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows the category filter bottom sheet
+  void _showCategoryFilterSheet(BuildContext context) {
+    final categories = ref.read(categoryListProvider);
+    final transactions = ref.read(transactionStreamProvider).valueOrNull ?? [];
+
+    // Count transactions per category
+    final categoryCounts = <String, int>{};
+    for (final t in transactions) {
+      categoryCounts[t.categoryId] = (categoryCounts[t.categoryId] ?? 0) + 1;
+    }
+
+    // Sort categories by transaction count (descending)
+    final sortedCategories = categories.toList()
+      ..sort((a, b) =>
+          (categoryCounts[b.id] ?? 0).compareTo(categoryCounts[a.id] ?? 0));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Title
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Text(
+                    'Filter by Category',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                  const Spacer(),
+                  if (_selectedCategoryId != null)
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedCategoryId = null;
+                        });
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Clear'),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(),
+            // Category list
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: sortedCategories.length,
+                itemBuilder: (context, index) {
+                  final category = sortedCategories[index];
+                  final count = categoryCounts[category.id] ?? 0;
+                  final isSelected = _selectedCategoryId == category.id;
+                  final categoryColor = CategoryData.getColor(category.id);
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: categoryColor.withValues(alpha: 0.2),
+                      child: Icon(
+                        category.icon,
+                        color: categoryColor,
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(category.name),
+                    subtitle:
+                        Text('$count transaction${count == 1 ? '' : 's'}'),
+                    trailing: isSelected
+                        ? Icon(
+                            Icons.check_circle,
+                            color: Theme.of(context).colorScheme.primary,
+                          )
+                        : null,
+                    selected: isSelected,
+                    onTap: () {
+                      setState(() {
+                        _selectedCategoryId = category.id;
+                      });
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTransactionCard(Transaction transaction, BuildContext context) {
@@ -1379,75 +1680,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         );
       }
     }
-  }
-
-  Widget _buildExpressiveLoading() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Material 3 Expressive Loading Animation
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 80,
-                height: 80,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.surfaceContainerHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ),
-              Icon(
-                Icons.account_balance_wallet_outlined,
-                size: 32,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Loading your transactions...',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Please wait while we fetch your financial data',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 32),
-          // Animated loading dots
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(3, (index) {
-              return AnimatedContainer(
-                duration: Duration(milliseconds: 400 + (index * 200)),
-                curve: Curves.easeInOut,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.6),
-                  shape: BoxShape.circle,
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
-    );
   }
 
   Map<DateTime, List<Transaction>> _groupTransactionsByDate(

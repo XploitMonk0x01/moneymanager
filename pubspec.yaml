@@ -1,5 +1,5 @@
 name: moneymanager
-version: 2.1.0+1
+version: 2.2.0+1
 description: MoneyManager app using Material 3 expressive UI
 publish_to: 'none'
 
@@ -28,6 +28,7 @@ dependencies:
   url_launcher: ^6.3.2
   uuid: ^4.5.1
   path: ^1.9.0
+  shimmer: ^3.0.0
 
 dev_dependencies:
   flutter_test:

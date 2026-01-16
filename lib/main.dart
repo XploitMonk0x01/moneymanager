@@ -8,6 +8,7 @@ import 'src/screens/analysis_screen.dart';
 import 'src/screens/accounts_screen.dart';
 import 'src/screens/record_screen.dart';
 import 'src/providers/providers.dart';
+import 'src/core/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,8 +62,8 @@ class MoneyManagerApp extends ConsumerWidget {
 
         return MaterialApp(
           title: 'MoneyManager',
-          theme: _buildThemeFromColorScheme(lightScheme, false),
-          darkTheme: _buildThemeFromColorScheme(darkScheme, true),
+          theme: AppTheme.buildTheme(lightScheme, false),
+          darkTheme: AppTheme.buildTheme(darkScheme, true),
           themeMode: themeMode,
           home: FutureBuilder(
             future: _initializeApp(ref),
@@ -109,157 +110,6 @@ class MoneyManagerApp extends ConsumerWidget {
           debugShowCheckedModeBanner: false,
         );
       },
-    );
-  }
-
-  ThemeData _buildThemeFromColorScheme(ColorScheme colorScheme, bool isDark) {
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: colorScheme,
-      typography: Typography.material2021(),
-      visualDensity: VisualDensity.adaptivePlatformDensity,
-
-      // Expressive shapes - larger corner radius for modern feel
-      cardTheme: CardThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28), // More expressive radius
-        ),
-        elevation: isDark ? 1 : 2,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
-      ),
-
-      // Enhanced app bar theme
-      appBarTheme: AppBarTheme(
-        backgroundColor: colorScheme.surface,
-        foregroundColor: colorScheme.onSurface,
-        elevation: 0,
-        scrolledUnderElevation: 4,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            bottom: Radius.circular(28),
-          ),
-        ),
-      ),
-
-      // Expressive navigation bar
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: colorScheme.surface,
-        indicatorColor: colorScheme.primaryContainer,
-        indicatorShape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(20)), // More rounded
-        ),
-        elevation: isDark ? 1 : 3,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
-        iconTheme: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return IconThemeData(
-              color: colorScheme.onPrimaryContainer,
-              size: 26, // Slightly larger for expressive feel
-            );
-          }
-          return IconThemeData(
-            color: colorScheme.onSurfaceVariant,
-            size: 24,
-          );
-        }),
-        labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return TextStyle(
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
-              fontSize: 12,
-            );
-          }
-          return TextStyle(
-            fontWeight: FontWeight.w500,
-            color: colorScheme.onSurfaceVariant,
-            fontSize: 12,
-          );
-        }),
-      ),
-
-      // Enhanced FAB theme
-      floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
-        elevation: isDark ? 2 : 6,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28), // Extra rounded
-        ),
-      ),
-
-      // Enhanced button themes
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
-          elevation: isDark ? 1 : 3,
-          shadowColor: colorScheme.shadow.withValues(alpha: 0.2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        ),
-      ),
-
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: colorScheme.primary,
-          foregroundColor: colorScheme.onPrimary,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        ),
-      ),
-
-      // Enhanced input decoration
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: colorScheme.outline.withValues(alpha: 0.3),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(
-            color: colorScheme.primary,
-            width: 2,
-          ),
-        ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      ),
-
-      // Enhanced bottom sheet theme
-      bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: colorScheme.surface,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(28),
-          ),
-        ),
-        elevation: isDark ? 2 : 8,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
-      ),
-
-      // Enhanced dialog theme
-      dialogTheme: DialogThemeData(
-        backgroundColor: colorScheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28),
-        ),
-        elevation: isDark ? 2 : 6,
-        shadowColor: colorScheme.shadow.withValues(alpha: 0.1),
-      ),
     );
   }
 

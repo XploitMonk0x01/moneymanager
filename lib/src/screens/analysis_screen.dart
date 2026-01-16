@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:moneymanager/src/models/models.dart';
 import 'package:moneymanager/src/providers/providers.dart';
+import 'package:moneymanager/src/widgets/widgets.dart';
 import 'package:moneymanager/src/core/constants/app_constants.dart';
 import 'package:intl/intl.dart';
 import 'package:moneymanager/src/data/category_data.dart';
@@ -93,10 +94,21 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
           ),
         ],
       ),
-      drawer: _buildDrawer(context),
+      drawer: AppDrawer(
+        onDeleteReset: () => _showDeleteResetDialog(context),
+        onFeedback: () => _showFeedbackDialog(context),
+        onCloudStorage: () => _showCloudStorageDialog(context),
+        onAbout: () => _showAboutDialog(context),
+      ),
       body: transactionsAsync.when(
         data: (transactions) => _buildAnalysisContent(transactions),
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Column(
+          children: [
+            SummaryCardRowSkeleton(),
+            SizedBox(height: 16),
+            ChartSkeleton(height: 250),
+          ],
+        ),
         error: (error, stack) => Center(
           child: Text('Error: $error'),
         ),
@@ -210,64 +222,10 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
     final expenses = monthTransactions
         .where((t) => !t.isIncome)
         .fold(0.0, (sum, t) => sum + t.amount);
-    final balance = income - expenses;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-              child: _buildSummaryCard(
-                  'Income', income, Colors.green, Icons.trending_up)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: _buildSummaryCard(
-                  'Expenses', expenses, Colors.red, Icons.trending_down)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: _buildSummaryCard(
-                  'Balance',
-                  balance,
-                  balance >= 0 ? Colors.blue : Colors.orange,
-                  Icons.account_balance_wallet)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryCard(
-      String title, double amount, Color color, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: color.withValues(alpha: 0.3),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '₹${amount.abs().toStringAsFixed(0)}',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
-        ],
-      ),
+    return SummaryCardRow(
+      income: income,
+      expenses: expenses,
     );
   }
 
@@ -907,89 +865,6 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen>
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDrawer(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.account_balance_wallet,
-                  size: 48,
-                  color: Theme.of(context).colorScheme.onPrimary,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Money Manager',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onPrimary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                Text(
-                  'Manage your finances',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onPrimary
-                            .withValues(alpha: 0.8),
-                      ),
-                ),
-              ],
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete_forever),
-            title: const Text('Delete & Reset'),
-            onTap: () {
-              Navigator.pop(context);
-              _showDeleteResetDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.feedback),
-            title: const Text('Feedback'),
-            onTap: () {
-              Navigator.pop(context);
-              _showFeedbackDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_sync),
-            title: const Text('Cloud Storage'),
-            onTap: () {
-              Navigator.pop(context);
-              _showCloudStorageDialog(context);
-            },
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text('Settings'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, '/settings');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('About'),
-            onTap: () {
-              Navigator.pop(context);
-              _showAboutDialog(context);
-            },
           ),
         ],
       ),
