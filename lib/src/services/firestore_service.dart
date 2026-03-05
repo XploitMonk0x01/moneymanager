@@ -347,7 +347,6 @@ class FirestoreService {
     try {
       await _db.collection('upi_apps').doc(upiApp.id).set({
         'name': upiApp.name,
-        'iconAsset': upiApp.iconAsset,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -366,7 +365,6 @@ class FirestoreService {
         return app.UpiApp(
           id: doc.id,
           name: data['name'] ?? '',
-          iconAsset: data['iconAsset'] ?? '',
         );
       }).toList();
     });
@@ -376,7 +374,6 @@ class FirestoreService {
     try {
       await _db.collection('upi_apps').doc(upiApp.id).update({
         'name': upiApp.name,
-        'iconAsset': upiApp.iconAsset,
         'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -536,11 +533,11 @@ class FirestoreService {
       if (upiAppsSnapshot.docs.isEmpty) {
         // Add default UPI apps
         final defaultUpiApps = [
-          app.UpiApp(id: 'gpay', name: 'Google Pay', iconAsset: ''),
-          app.UpiApp(id: 'phonepe', name: 'PhonePe', iconAsset: ''),
-          app.UpiApp(id: 'paytm', name: 'Paytm', iconAsset: ''),
-          app.UpiApp(id: 'amazonpay', name: 'Amazon Pay', iconAsset: ''),
-          app.UpiApp(id: 'bhim', name: 'BHIM UPI', iconAsset: ''),
+          app.UpiApp(id: 'gpay', name: 'Google Pay'),
+          app.UpiApp(id: 'phonepe', name: 'PhonePe'),
+          app.UpiApp(id: 'paytm', name: 'Paytm'),
+          app.UpiApp(id: 'amazonpay', name: 'Amazon Pay'),
+          app.UpiApp(id: 'bhim', name: 'BHIM UPI'),
         ];
 
         for (final upiApp in defaultUpiApps) {

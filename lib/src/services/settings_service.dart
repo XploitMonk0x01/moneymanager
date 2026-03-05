@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Service for managing app settings and preferences
+/// Service for managing app settings and preferences.
+/// Uses a cached [SharedPreferences] instance to avoid repeated async lookups.
 class SettingsService {
   // Settings keys
   static const String _themeKey = 'theme_mode';
@@ -10,16 +11,20 @@ class SettingsService {
   static const String _currencyKey = 'currency_symbol';
   static const String _languageKey = 'language_code';
 
+  SharedPreferences? _prefs;
+
+  Future<SharedPreferences> get _instance async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
   /// Reset all settings to default values
   Future<void> resetSettings() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // Clear all preferences
+      final prefs = await _instance;
       await prefs.clear();
-
-      // Set default values
-      await prefs.setString(_themeKey, 'system'); // ThemeMode.system
+      _prefs = null; // invalidate cache so next read picks up defaults
+      await prefs.setString(_themeKey, 'system');
       await prefs.setBool(_notificationsKey, true);
       await prefs.setBool(_biometricKey, false);
       await prefs.setBool(_offlineModeKey, false);
@@ -30,75 +35,39 @@ class SettingsService {
     }
   }
 
-  /// Get theme mode setting
-  Future<String> getThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_themeKey) ?? 'system';
-  }
+  Future<String> getThemeMode() async =>
+      (await _instance).getString(_themeKey) ?? 'system';
 
-  /// Set theme mode setting
-  Future<void> setThemeMode(String mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_themeKey, mode);
-  }
+  Future<void> setThemeMode(String mode) async =>
+      (await _instance).setString(_themeKey, mode);
 
-  /// Get notifications enabled setting
-  Future<bool> getNotificationsEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_notificationsKey) ?? true;
-  }
+  Future<bool> getNotificationsEnabled() async =>
+      (await _instance).getBool(_notificationsKey) ?? true;
 
-  /// Set notifications enabled setting
-  Future<void> setNotificationsEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_notificationsKey, enabled);
-  }
+  Future<void> setNotificationsEnabled(bool enabled) async =>
+      (await _instance).setBool(_notificationsKey, enabled);
 
-  /// Get biometric authentication enabled setting
-  Future<bool> getBiometricEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_biometricKey) ?? false;
-  }
+  Future<bool> getBiometricEnabled() async =>
+      (await _instance).getBool(_biometricKey) ?? false;
 
-  /// Set biometric authentication enabled setting
-  Future<void> setBiometricEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_biometricKey, enabled);
-  }
+  Future<void> setBiometricEnabled(bool enabled) async =>
+      (await _instance).setBool(_biometricKey, enabled);
 
-  /// Get offline mode enabled setting
-  Future<bool> getOfflineModeEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_offlineModeKey) ?? false;
-  }
+  Future<bool> getOfflineModeEnabled() async =>
+      (await _instance).getBool(_offlineModeKey) ?? false;
 
-  /// Set offline mode enabled setting
-  Future<void> setOfflineModeEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_offlineModeKey, enabled);
-  }
+  Future<void> setOfflineModeEnabled(bool enabled) async =>
+      (await _instance).setBool(_offlineModeKey, enabled);
 
-  /// Get currency symbol setting
-  Future<String> getCurrencySymbol() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_currencyKey) ?? '₹';
-  }
+  Future<String> getCurrencySymbol() async =>
+      (await _instance).getString(_currencyKey) ?? '₹';
 
-  /// Set currency symbol setting
-  Future<void> setCurrencySymbol(String symbol) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_currencyKey, symbol);
-  }
+  Future<void> setCurrencySymbol(String symbol) async =>
+      (await _instance).setString(_currencyKey, symbol);
 
-  /// Get language code setting
-  Future<String> getLanguageCode() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_languageKey) ?? 'en';
-  }
+  Future<String> getLanguageCode() async =>
+      (await _instance).getString(_languageKey) ?? 'en';
 
-  /// Set language code setting
-  Future<void> setLanguageCode(String code) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_languageKey, code);
-  }
+  Future<void> setLanguageCode(String code) async =>
+      (await _instance).setString(_languageKey, code);
 }

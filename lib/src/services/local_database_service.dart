@@ -6,7 +6,11 @@ import '../models/models.dart' as app;
 class LocalDatabaseService {
   static Database? _database;
   static const String _databaseName = 'moneymanager_offline.db';
-  static const int _databaseVersion = 1;
+  // Bump this version whenever the schema changes and add a migration in
+  // _onUpgrade below. Version history:
+  //   1 → initial schema
+  //   2 → added createdAt index on transactions & records
+  static const int _databaseVersion = 2;
 
   // Table names
   static const String _transactionsTable = 'transactions';
@@ -105,10 +109,16 @@ class LocalDatabaseService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Handle database upgrades
-    if (oldVersion < newVersion) {
-      // Add migration logic here when schema changes
+    // Run each migration step in order so users on any older version
+    // can reach the latest schema without skipping steps.
+    if (oldVersion < 2) {
+      // v1 → v2: add indexes for faster date-sorted queries
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_transactions_date ON $_transactionsTable (date DESC)');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_records_date ON $_recordsTable (date DESC)');
     }
+    // Future migrations: add further `if (oldVersion < N)` blocks here.
   }
 
   // =============== TRANSACTION OPERATIONS ===============

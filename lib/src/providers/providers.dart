@@ -7,7 +7,7 @@ import '../services/biometric_auth_service.dart';
 import '../services/local_database_service.dart';
 import '../services/settings_service.dart';
 
-// Theme provider
+// ─── Theme ───────────────────────────────────────────────────────────────────
 class ThemeModeNotifier extends StateNotifier<ThemeMode> {
   ThemeModeNotifier() : super(ThemeMode.system);
 
@@ -20,6 +20,21 @@ final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>(
   (ref) => ThemeModeNotifier(),
 );
 
+// ─── Global error notifier ───────────────────────────────────────────────────
+/// A lightweight notifier that surfaces the latest error message from any
+/// provider. Screens can watch [errorProvider] and show a SnackBar on change.
+class AppErrorNotifier extends StateNotifier<String?> {
+  AppErrorNotifier() : super(null);
+
+  void report(Object error) => state = error.toString();
+  void clear() => state = null;
+}
+
+final errorProvider = StateNotifierProvider<AppErrorNotifier, String?>(
+  (ref) => AppErrorNotifier(),
+);
+
+// ─── Services ─────────────────────────────────────────────────────────────────
 // Firestore service provider
 final firestoreServiceProvider = Provider<FirestoreService>((ref) {
   return FirestoreService();
@@ -52,13 +67,14 @@ final transactionStreamProvider =
 // Transaction providers
 final transactionListProvider =
     StateNotifierProvider<TransactionListNotifier, List<Transaction>>(
-  (ref) => TransactionListNotifier(ref.read(firestoreServiceProvider)),
+  (ref) => TransactionListNotifier(ref.read(firestoreServiceProvider), ref),
 );
 
 class TransactionListNotifier extends StateNotifier<List<Transaction>> {
   final FirestoreService _firestoreService;
+  final Ref _ref;
 
-  TransactionListNotifier(this._firestoreService) : super([]) {
+  TransactionListNotifier(this._firestoreService, this._ref) : super([]) {
     _loadTransactions();
   }
 
@@ -68,7 +84,7 @@ class TransactionListNotifier extends StateNotifier<List<Transaction>> {
         state = transactions;
       },
       onError: (error) {
-        // Error loading transactions: $error
+        _ref.read(errorProvider.notifier).report(error);
       },
     );
   }
@@ -139,11 +155,10 @@ class CategoryListNotifier extends StateNotifier<List<Category>> {
         if (categories.isNotEmpty) {
           state = categories;
         }
-        // If empty, keep the default categories
       },
       onError: (error) {
-        // Error loading categories: $error
-        // Keep default categories on error
+        // Keep default categories on error — logged for awareness
+        debugPrint('[CategoryListNotifier] Error loading categories: $error');
       },
     );
   }
@@ -221,11 +236,10 @@ class PaymentMethodListNotifier extends StateNotifier<List<PaymentMethod>> {
         if (paymentMethods.isNotEmpty) {
           state = paymentMethods;
         }
-        // If empty, keep the default payment methods
       },
       onError: (error) {
-        // Error loading payment methods: $error
-        // Keep default payment methods on error
+        // Keep default payment methods on error — logged for awareness
+        debugPrint('[PaymentMethodListNotifier] Error: $error');
       },
     );
   }
@@ -291,12 +305,12 @@ class UpiAppListNotifier extends StateNotifier<List<UpiApp>> {
 
   static List<UpiApp> _getDefaultUpiApps() {
     return [
-      UpiApp(id: 'gpay', name: 'Google Pay', iconAsset: ''),
-      UpiApp(id: 'phonepe', name: 'PhonePe', iconAsset: ''),
-      UpiApp(id: 'paytm', name: 'Paytm', iconAsset: ''),
-      UpiApp(id: 'amazonpay', name: 'Amazon Pay', iconAsset: ''),
-      UpiApp(id: 'slice', name: 'Slice', iconAsset: ''),
-      UpiApp(id: 'bhim', name: 'BHIM UPI', iconAsset: ''),
+      UpiApp(id: 'gpay', name: 'Google Pay'),
+      UpiApp(id: 'phonepe', name: 'PhonePe'),
+      UpiApp(id: 'paytm', name: 'Paytm'),
+      UpiApp(id: 'amazonpay', name: 'Amazon Pay'),
+      UpiApp(id: 'slice', name: 'Slice'),
+      UpiApp(id: 'bhim', name: 'BHIM UPI'),
     ];
   }
 
@@ -306,11 +320,10 @@ class UpiAppListNotifier extends StateNotifier<List<UpiApp>> {
         if (upiApps.isNotEmpty) {
           state = upiApps;
         }
-        // If empty, keep the default UPI apps
       },
       onError: (error) {
-        // Error loading UPI apps: $error
-        // Keep default UPI apps on error
+        // Keep default UPI apps on error — logged for awareness
+        debugPrint('[UpiAppListNotifier] Error: $error');
       },
     );
   }
@@ -367,14 +380,6 @@ class RecordListNotifier extends StateNotifier<List<Record>> {
     }
   }
 
-  Future<void> removeRecord(String id) async {
-    try {
-      await _firestoreService.deleteRecord(id);
-    } catch (e) {
-      throw Exception('Failed to remove record: $e');
-    }
-  }
-
   Future<void> deleteRecord(String id) async {
     try {
       await _firestoreService.deleteRecord(id);
@@ -422,7 +427,7 @@ class AutoPayListNotifier extends StateNotifier<List<AutoPay>> {
         state = autoPays;
       },
       onError: (error) {
-        // Error loading autopays: $error
+        debugPrint('[AutoPayListNotifier] Error loading autopays: $error');
       },
     );
   }
@@ -463,3 +468,11 @@ class AutoPayListNotifier extends StateNotifier<List<AutoPay>> {
     super.dispose();
   }
 }
+
+// ─── Currency ────────────────────────────────────────────────────────────────
+/// Single reactive source of truth for the app's currency symbol.
+/// Uses FutureProvider since SettingsService.getCurrencySymbol() is async.
+final currencySymbolProvider = FutureProvider.autoDispose<String>((ref) async {
+  final settings = ref.watch(settingsServiceProvider);
+  return settings.getCurrencySymbol();
+});

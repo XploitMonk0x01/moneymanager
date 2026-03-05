@@ -2,6 +2,12 @@
 
 MoneyManager is a modern Flutter app for tracking your expenses, managing your budget, and keeping records of your financial activities. Built with Material 3 expressive UI, it offers a beautiful, intuitive, and powerful experience for personal finance management.
 
+## Current Version
+
+- **App version:** `2.2.1+2`
+- **Release date:** 2026-03-05
+- **Notes:** Stability update for Android build/dependency compatibility.
+
 ## Features
 
 - 📊 **Dashboard**: Visualize your income, expenses, and trends with expressive charts and analytics.
