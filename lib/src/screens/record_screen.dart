@@ -1288,13 +1288,13 @@ class _AddRecordSheetState extends State<_AddRecordSheet> {
                       await widget.ref
                           .read(recordListNotifierProvider.notifier)
                           .addRecord(record);
-                      if (mounted) Navigator.of(context).pop();
+                      if (!context.mounted) return;
+                      Navigator.of(context).pop();
                     } catch (error) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: $error')),
-                        );
-                      }
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $error')),
+                      );
                     }
                   }
                 },

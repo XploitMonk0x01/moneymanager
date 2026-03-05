@@ -6,7 +6,7 @@ MoneyManager is a modern Flutter app for tracking your expenses, managing your b
 
 - **App version:** `2.2.1+2`
 - **Release date:** 2026-03-05
-- **Notes:** Stability update for Android build/dependency compatibility.
+- **Notes:** OLED optimizations for dark theme, UI/UX refinements with haptic feedback, and stability improvements.
 
 ## Features
 
@@ -18,6 +18,7 @@ MoneyManager is a modern Flutter app for tracking your expenses, managing your b
 - 🗑️ **Delete & Reset**: Easily clear all data or reset app settings.
 - 💬 **Feedback**: Send feedback directly from the app.
 - 🎨 **Material 3 Design**: Enjoy a modern, adaptive, and expressive UI.
+- 🌑 **OLED Dark Mode**: True black backgrounds for stunning visuals and battery savings on OLED displays.
 
 ## Getting Started
 

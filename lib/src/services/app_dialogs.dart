@@ -566,6 +566,7 @@ mixin AppDialogsMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     );
 
     if (confirm != true) return;
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -589,8 +590,8 @@ mixin AppDialogsMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
       await Future.delayed(const Duration(seconds: 2));
 
-      if (context.mounted) Navigator.pop(context);
       if (context.mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Data refreshed from cloud successfully!'),
@@ -599,8 +600,8 @@ mixin AppDialogsMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         );
       }
     } catch (e) {
-      if (context.mounted) Navigator.pop(context);
       if (context.mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Restore failed: $e'),

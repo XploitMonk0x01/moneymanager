@@ -904,7 +904,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  value: _category.isEmpty ? null : _category,
+                  initialValue: _category.isEmpty ? null : _category,
                   items: widget.categories.map((category) {
                     return DropdownMenuItem(
                       value: category.id,
@@ -962,7 +962,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  value: _paymentMethod,
+                  initialValue: _paymentMethod,
                   items: ['Cash', 'UPI', 'Card', 'Bank Transfer']
                       .map((method) => DropdownMenuItem(
                             value: method,
@@ -987,7 +987,7 @@ class _EditTransactionSheetState extends ConsumerState<_EditTransactionSheet> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    value: _upiApp,
+                    initialValue: _upiApp,
                     items: widget.upiApps
                         .map((app) => DropdownMenuItem(
                               value: app.name,

@@ -46,6 +46,11 @@ class MoneyManagerApp extends ConsumerWidget {
           darkScheme = ColorScheme.fromSeed(
             seedColor: const Color(0xFF6750A4),
             brightness: Brightness.dark,
+          ).copyWith(
+            // OLED Optimization
+            surface: const Color(0xFF0D0D0D), // Near black
+            surfaceContainerHighest:
+                const Color(0xFF1E1E1E), // Slightly lighter for surfaces
           );
         }
 

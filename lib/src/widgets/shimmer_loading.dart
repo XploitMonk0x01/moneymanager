@@ -164,8 +164,8 @@ class _SummaryCardRowContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ShimmerLoading(
-      child: const Row(
+    return const ShimmerLoading(
+      child: Row(
         children: [
           Expanded(child: SummaryCardSkeleton()),
           SizedBox(width: 12),

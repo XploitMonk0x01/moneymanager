@@ -8,6 +8,7 @@ import '../data/category_data.dart';
 import '../widgets/widgets.dart';
 import 'transaction_view_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 import 'package:animations/animations.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -153,14 +154,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       horizontal: 16,
                       vertical: 10,
                     ),
-                    hintStyle: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 15,
-                    ),
+                    hintStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
                             icon: const Icon(Icons.clear, size: 20),
                             onPressed: () {
+                              HapticFeedback.selectionClick();
                               setState(() {
                                 _searchQuery = '';
                                 _searchController.clear();
@@ -169,9 +170,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                           )
                         : null,
                   ),
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontSize: 15,
-                      ),
+                  style: Theme.of(context).textTheme.bodyLarge,
                   onChanged: (value) {
                     setState(() {
                       _searchQuery = value;
@@ -495,13 +494,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               label: Text(categoryName ?? 'Category'),
               deleteIcon: const Icon(Icons.close, size: 16),
               onDeleted: () {
+                HapticFeedback.selectionClick();
                 setState(() {
                   _selectedCategoryId = null;
                 });
               },
               visualDensity: VisualDensity.compact,
-              labelStyle: Theme.of(context).textTheme.labelSmall,
-              padding: EdgeInsets.zero,
+              labelStyle: Theme.of(context).textTheme.labelLarge,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 4, vertical: 4), // Slightly larger touch area
             ),
           if (_searchQuery.isNotEmpty) ...[
             const SizedBox(width: 4),
@@ -509,19 +510,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               label: Text('"$_searchQuery"'),
               deleteIcon: const Icon(Icons.close, size: 16),
               onDeleted: () {
+                HapticFeedback.selectionClick();
                 setState(() {
                   _searchQuery = '';
                   _searchController.clear();
                 });
               },
               visualDensity: VisualDensity.compact,
-              labelStyle: Theme.of(context).textTheme.labelSmall,
-              padding: EdgeInsets.zero,
+              labelStyle: Theme.of(context).textTheme.labelLarge,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 4, vertical: 4), // Slightly larger touch area
             ),
           ],
           const Spacer(),
           TextButton(
-            onPressed: _clearFilters,
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              _clearFilters();
+            },
             child: const Text('Clear All'),
           ),
         ],
@@ -625,6 +631,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         : null,
                     selected: isSelected,
                     onTap: () {
+                      HapticFeedback.selectionClick();
                       setState(() {
                         _selectedCategoryId = category.id;
                       });
@@ -1561,6 +1568,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
 
     if (confirm != true) return;
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -1586,25 +1594,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       // Wait a moment for streams to refresh
       await Future.delayed(const Duration(seconds: 2));
 
-      if (context.mounted) Navigator.pop(context);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Data refreshed from cloud successfully!'),
-            backgroundColor: Colors.green.shade600,
-          ),
-        );
-      }
+      if (!context.mounted) return;
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Data refreshed from cloud successfully!'),
+          backgroundColor: Colors.green.shade600,
+        ),
+      );
     } catch (e) {
-      if (context.mounted) Navigator.pop(context);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Restore failed: $e'),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      if (!context.mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Restore failed: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
     }
   }
 

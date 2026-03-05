@@ -64,16 +64,12 @@ class AppTheme {
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return TextStyle(
+            return const TextStyle(
               fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
-              fontSize: 12,
             );
           }
-          return TextStyle(
+          return const TextStyle(
             fontWeight: FontWeight.w500,
-            color: colorScheme.onSurfaceVariant,
-            fontSize: 12,
           );
         }),
       ),
@@ -245,6 +241,11 @@ class AppTheme {
     return ColorScheme.fromSeed(
       seedColor: seed ?? seedColor,
       brightness: Brightness.dark,
+    ).copyWith(
+      // OLED Optimization for hardcoded themes
+      surface: const Color(0xFF0D0D0D), // Near black
+      surfaceContainerHighest:
+          const Color(0xFF1E1E1E), // Slightly lighter for surfaces
     );
   }
 }

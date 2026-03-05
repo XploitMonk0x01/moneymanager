@@ -91,30 +91,30 @@ class _AddTransactionSheetState extends ConsumerState<AddTransactionSheet> {
                             Row(
                               children: [
                                 Expanded(
-                                  child: RadioListTile<bool>(
-                                    title: const Text('Expense'),
-                                    value: false,
-                                    groupValue: _isIncome,
-                                    onChanged: (value) {
+                                  child: SegmentedButton<bool>(
+                                    segments: const [
+                                      ButtonSegment<bool>(
+                                        value: false,
+                                        label: Text('Expense'),
+                                      ),
+                                      ButtonSegment<bool>(
+                                        value: true,
+                                        label: Text('Income'),
+                                      ),
+                                    ],
+                                    selected: {_isIncome},
+                                    onSelectionChanged:
+                                        (Set<bool> newSelection) {
                                       setState(() {
-                                        _isIncome = value!;
+                                        _isIncome = newSelection.first;
                                       });
                                     },
-                                    activeColor:
-                                        Theme.of(context).colorScheme.error,
-                                  ),
-                                ),
-                                Expanded(
-                                  child: RadioListTile<bool>(
-                                    title: const Text('Income'),
-                                    value: true,
-                                    groupValue: _isIncome,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _isIncome = value!;
-                                      });
-                                    },
-                                    activeColor: Colors.green.shade600,
+                                    style: SegmentedButton.styleFrom(
+                                      selectedForegroundColor: Colors.white,
+                                      selectedBackgroundColor: _isIncome
+                                          ? Colors.green.shade600
+                                          : Theme.of(context).colorScheme.error,
+                                    ),
                                   ),
                                 ),
                               ],
